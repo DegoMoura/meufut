@@ -1317,7 +1317,7 @@ function traduzErroAuth(e){
     const p = myPlayer();
     const now = new Date().toISOString().slice(0,10);
     const upcoming = data.matches
-      .filter(m => myGroups().some(g=>g.id===m.groupId) && m.status!=='finalizada' && m.date >= now)
+      .filter(m => { const g = groupById(m.groupId); return g && g.associacaoId===associacaoId && m.status!=='finalizada' && m.date >= now; })
       .sort((a,b)=>a.date.localeCompare(b.date))[0];
 
     let nextCard = `
@@ -1403,23 +1403,33 @@ function traduzErroAuth(e){
   }
 
   // ---------- GRUPOS ----------
+  function souAdminAssoc(){
+    const a = associacaoAtual();
+    return !!a && (a.adminId===me || (a.moderadores||[]).includes(me));
+  }
   function renderGrupos(){
     const grupos = data.groups.filter(g=>g.associacaoId===associacaoId);
+    const a = associacaoAtual();
+    const souAdmin = souAdminAssoc();
+    const hoje = new Date().toISOString().slice(0,10);
     return `
       <h1 class="page-title">Fut</h1>
       <p class="lead">Cada Fut é uma turma fixa de pelada dentro da associação.</p>
-      <button class="btn btn-gold btn-block" style="margin-bottom:10px;" data-action="marcar-fut-lista">📅 MARCAR FUT</button>
+      ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:10px;" data-action="marcar-fut-lista">📅 MARCAR FUT</button>` : ''}
       <button class="btn btn-ghost btn-block" style="margin-bottom:16px;" data-action="gerar-demo">🎲 Gerar Fut de demonstração (16 jogadores)</button>
       ${grupos.length===0 ? `<div class="empty"><span class="ball">👥</span>Nenhum Fut criado ainda.</div>` :
         grupos.map(g=>{
           const sou = g.memberIds.includes(me);
+          const maxJog = (a && a.jogadoresLinha) ? a.jogadoresLinha*4 : g.maxPlayers;
+          const proxima = data.matches.filter(m=>m.groupId===g.id && m.status!=='finalizada' && m.date>=hoje).sort((x,y)=>x.date.localeCompare(y.date))[0];
           return `
           <div class="card">
             <div class="row" style="align-items:flex-start;">
-              <div style="cursor:pointer;flex:1;" data-open-group="${g.id}">
+              <div style="cursor:pointer;flex:1;" ${proxima?`data-open-match="${proxima.id}"`:`data-open-group="${g.id}"`}>
                 <div style="font-family:'Bebas Neue';font-size:19px;">${g.name}</div>
                 <div class="meta">${g.tipo} · ${g.diaPadrao} ${g.horarioPadrao} · 📍 ${g.local}</div>
-                <div class="meta">R$ ${g.valor} · até ${g.maxPlayers} jogadores · ${g.memberIds.length} membros</div>
+                <div class="meta">até ${maxJog} jogadores · até 4 goleiros · ${g.memberIds.length} membros</div>
+                ${proxima ? `<div class="meta" style="color:var(--gold);">📅 Próxima pelada: ${fmtDate(proxima.date)} ${proxima.time}</div>` : ''}
               </div>
               ${sou ? '' : `<button class="btn btn-gold btn-sm" data-join-group="${g.id}">Entrar</button>`}
             </div>
@@ -1440,11 +1450,12 @@ function traduzErroAuth(e){
   }
   function renderGrupoTabFut(g){
     const matches = groupMatches(g.id);
+    const souAdmin = souAdminAssoc();
     return `
       <p class="lead" style="margin-bottom:14px;">💰 A cobrança da associação é mensal (mensalidade dos sócios) — não é cobrada por partida.</p>
       <div class="row" style="margin-bottom:6px;align-items:center;">
         <div class="eyebrow" style="margin:0;">Partidas</div>
-        <button class="btn btn-gold btn-sm" data-action="marcar-fut" data-gid="${g.id}">📅 MARCAR FUT</button>
+        ${souAdmin ? `<button class="btn btn-gold btn-sm" data-action="marcar-fut" data-gid="${g.id}">📅 MARCAR FUT</button>` : ''}
       </div>
       ${matches.length===0 ? `<p class="lead">Nenhuma partida marcada.</p>` :
         matches.map(m=>`
@@ -3076,7 +3087,7 @@ function traduzErroAuth(e){
     const a = associacaoAtual();
     fut = { id: uid(), associacaoId, name: (a?a.name:'Pelada'), tipo: (a?a.campoTipo:'Society'),
       diaPadrao: (a && a.diasSemana && a.diasSemana[0]) || 'Quarta-feira', horarioPadrao: (a?a.horaInicio:'20:00'),
-      local: (a?a.endereco:''), maxPlayers: 20, valor: (a?a.mensalidadeValor:0)||0, adminId: me, memberIds:[me],
+      local: (a?a.endereco:''), maxPlayers: (a && a.jogadoresLinha ? a.jogadoresLinha*4 : 28), valor: (a?a.mensalidadeValor:0)||0, adminId: me, memberIds:[me],
       prazoAvaliacaoHoras: (a && a.prazoAvaliacaoHoras!=null) ? a.prazoAvaliacaoHoras : 24,
       moderadores:[], memberSince:{[me]: new Date().toISOString().slice(0,10)}, historico:[] };
     data.groups.push(fut);
@@ -3530,6 +3541,7 @@ function traduzErroAuth(e){
 
     const marcarFutListaBtn = document.querySelector('[data-action="marcar-fut-lista"]');
     if(marcarFutListaBtn) marcarFutListaBtn.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
       const fut = obterOuCriarFutPadrao();
       await saveData();
       ui.groupId = fut.id;
@@ -3544,6 +3556,7 @@ function traduzErroAuth(e){
 
     const marcarFutBtn = document.querySelector('[data-action="marcar-fut"]');
     if(marcarFutBtn) marcarFutBtn.onclick = ()=>{
+      if(!souAdminAssoc()) return;
       ui.marcarFutGroupId = marcarFutBtn.dataset.gid;
       ui.draftMarcarFut = null;
       ui.modal = 'marcar-fut';
@@ -3551,6 +3564,7 @@ function traduzErroAuth(e){
     };
     const confirmarMarcarFutBtn = document.querySelector('[data-action="confirmar-marcar-fut"]');
     if(confirmarMarcarFutBtn) confirmarMarcarFutBtn.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
       const g = groupById(ui.marcarFutGroupId);
       const date = document.getElementById('mf-date').value;
       const horaInicio = document.getElementById('mf-hora-ini').value;
