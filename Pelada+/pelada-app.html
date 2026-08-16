@@ -378,7 +378,7 @@ function traduzErroAuth(e){
     const v = Object.values(grupo);
     return v.length ? v.reduce((a,b)=>a+b,0)/v.length : 5;
   }
-  function ovr(p, campoTipo){ return Math.round(avgStars(p, campoTipo)*10); }
+  function ovr(p, campoTipo){ return Math.max(0, Math.min(99, Math.round((avgStars(p, campoTipo)-1)*11))); }
   function posicaoPrincipalPara(p, campoTipo){
     if(p.posicaoPrincipal && p.posicaoPrincipal[campoTipo]) return p.posicaoPrincipal[campoTipo];
     if(p.posicao && posicoesParaCampo(campoTipo).includes(p.posicao)) return p.posicao;
@@ -3562,12 +3562,7 @@ function traduzErroAuth(e){
           </div>`).join('')}
       </div>
       <div class="eyebrow" style="margin-top:16px;">Informações do jogador</div>
-      <div class="card">
-        <div class="list-row"><div class="name">Altura</div><div class="meta">${p.altura?p.altura+' cm':'—'}</div></div>
-        <div class="list-row"><div class="name">Peso</div><div class="meta">${p.peso?p.peso+' kg':'—'}</div></div>
-        <div class="list-row"><div class="name">Tamanho do pé</div><div class="meta">${p.pe_numero||'—'}</div></div>
-        <div class="list-row"><div class="name">Time do coração</div><div class="meta">${p.timeCoracao||'—'}</div></div>
-      </div>
+      ${renderConfigJogadorInfoForm(p)}
       <div class="eyebrow" style="margin-top:16px;">Meus Futs</div>
       <div class="card">
         ${myGroups().length===0 ? `<p class="lead" style="margin:0;">Nenhum Fut ainda.</p>` :
@@ -3575,9 +3570,24 @@ function traduzErroAuth(e){
       </div>
     `;
   }
+  function renderConfigJogadorInfoForm(p){
+    if(!ui.draftConfigJogadorInfo) ui.draftConfigJogadorInfo = { pe:p.pe, altura:p.altura, peso:p.peso, pe_numero:p.pe_numero, timeCoracao:p.timeCoracao };
+    const d = ui.draftConfigJogadorInfo;
+    return `
+      <div class="card">
+        <label style="margin-top:0;">Pé dominante</label>
+        <div class="chip-row">${['Direito','Esquerdo','Ambidestro'].map(pe=>`<div class="chip ${d.pe===pe?'active':''}" data-cfgj-pe="${pe}">${pe}</div>`).join('')}</div>
+        <label>Altura (cm)</label><input id="cfgj-altura" type="number" placeholder="178" value="${d.altura}">
+        <label>Peso (kg)</label><input id="cfgj-peso" type="number" placeholder="75" value="${d.peso}">
+        <label>Tamanho do pé (calçado)</label><input id="cfgj-penumero" type="number" placeholder="41" value="${d.pe_numero}">
+        <label>Time do coração</label><input id="cfgj-time" value="${d.timeCoracao}">
+        <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="salvar-config-jogador-info">Salvar</button>
+      </div>
+    `;
+  }
   function renderConfigPessoais(){
     const p = myPlayer();
-    if(!ui.draftConfigPessoais) ui.draftConfigPessoais = {whatsapp:p.whatsapp, nascimento:p.nascimento, estado:p.estado, cidade:p.cidade, genero:p.genero, estadoCivil:p.estadoCivil, filhos:p.filhos, pe:p.pe};
+    if(!ui.draftConfigPessoais) ui.draftConfigPessoais = {whatsapp:p.whatsapp, nascimento:p.nascimento, estado:p.estado, cidade:p.cidade, genero:p.genero, estadoCivil:p.estadoCivil, filhos:p.filhos};
     const d = ui.draftConfigPessoais;
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-config-pessoal" style="margin-bottom:14px;">← Configurações</button>
@@ -3591,7 +3601,6 @@ function traduzErroAuth(e){
         <label>Gênero</label><div class="chip-row">${['Masculino','Feminino'].map(g=>`<div class="chip ${d.genero===g?'active':''}" data-cfgp-genero="${g}">${g}</div>`).join('')}</div>
         <label>Estado civil</label><div class="chip-row">${['Solteiro','Casado','Viúvo'].map(c=>`<div class="chip ${d.estadoCivil===c?'active':''}" data-cfgp-civil="${c}">${c}</div>`).join('')}</div>
         <label>Possui filhos?</label><div class="chip-row">${['Sim','Não'].map(f=>`<div class="chip ${d.filhos===f?'active':''}" data-cfgp-filhos="${f}">${f}</div>`).join('')}</div>
-        <label>Pé dominante</label><div class="chip-row">${['Direito','Esquerdo','Ambidestro'].map(pe=>`<div class="chip ${d.pe===pe?'active':''}" data-cfgp-pe="${pe}">${pe}</div>`).join('')}</div>
         <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="salvar-config-pessoais">Salvar</button>
       </div>
     `;
@@ -3949,7 +3958,7 @@ function traduzErroAuth(e){
     });
     const voltarConfigBtn = document.querySelector('[data-action="voltar-config"]');
     if(voltarConfigBtn) voltarConfigBtn.onclick = ()=>{
-      ui.configSub=null; ui.draftConfigPessoais=null; ui.draftConfigEmergencia=null; ui.draftConfigLogin=null;
+      ui.configSub=null; ui.draftConfigPessoais=null; ui.draftConfigEmergencia=null; ui.draftConfigLogin=null; ui.draftConfigJogadorInfo=null;
       ui.futConfigSub=null; ui.draftCfgGrupo=null; ui.draftCfgAval=null; ui.draftCfgHorario=null;
       ui.draftCfgLocal=null; ui.draftCfgSorteio=null; ui.draftCfgFila=null; ui.draftFormacao=null; ui.classificarAberto=null;
       ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finStatusFiltro=null;
@@ -3959,7 +3968,7 @@ function traduzErroAuth(e){
     };
     const voltarConfigPessoalBtn = document.querySelector('[data-action="voltar-config-pessoal"]');
     if(voltarConfigPessoalBtn) voltarConfigPessoalBtn.onclick = ()=>{
-      ui.configSub='pessoal'; ui.draftConfigPessoais=null; ui.draftConfigEmergencia=null; ui.draftConfigLogin=null;
+      ui.configSub='pessoal'; ui.draftConfigPessoais=null; ui.draftConfigEmergencia=null; ui.draftConfigLogin=null; ui.draftConfigJogadorInfo=null;
       render();
     };
     const avatarBtn = document.querySelector('[data-action="abrir-perfil-pessoal"]');
@@ -3988,14 +3997,28 @@ function traduzErroAuth(e){
       document.querySelectorAll('[data-cfgp-genero]').forEach(el=> el.onclick = ()=>{ d.genero = el.dataset.cfgpGenero; render(); });
       document.querySelectorAll('[data-cfgp-civil]').forEach(el=> el.onclick = ()=>{ d.estadoCivil = el.dataset.cfgpCivil; render(); });
       document.querySelectorAll('[data-cfgp-filhos]').forEach(el=> el.onclick = ()=>{ d.filhos = el.dataset.cfgpFilhos; render(); });
-      document.querySelectorAll('[data-cfgp-pe]').forEach(el=> el.onclick = ()=>{ d.pe = el.dataset.cfgpPe; render(); });
       const salvarPessoaisBtn = document.querySelector('[data-action="salvar-config-pessoais"]');
       if(salvarPessoaisBtn) salvarPessoaisBtn.onclick = async ()=>{
         const p = myPlayer();
         p.whatsapp=d.whatsapp.trim(); p.nascimento=d.nascimento; p.estado=d.estado; p.cidade=d.cidade.trim();
-        p.genero=d.genero; p.estadoCivil=d.estadoCivil; p.filhos=d.filhos; p.pe=d.pe;
+        p.genero=d.genero; p.estadoCivil=d.estadoCivil; p.filhos=d.filhos;
         ui.draftConfigPessoais=null;
         await saveData(); showToast('Dados pessoais atualizados!'); ui.configSub=null; render();
+      };
+    }
+    if(ui.configSub==='jogador' && ui.draftConfigJogadorInfo){
+      const d = ui.draftConfigJogadorInfo;
+      document.querySelectorAll('[data-cfgj-pe]').forEach(el=> el.onclick = ()=>{ d.pe = el.dataset.cfgjPe; render(); });
+      const cfgjAltura = document.getElementById('cfgj-altura'); if(cfgjAltura) cfgjAltura.oninput = e=>{ d.altura = e.target.value; };
+      const cfgjPeso = document.getElementById('cfgj-peso'); if(cfgjPeso) cfgjPeso.oninput = e=>{ d.peso = e.target.value; };
+      const cfgjPenumero = document.getElementById('cfgj-penumero'); if(cfgjPenumero) cfgjPenumero.oninput = e=>{ d.pe_numero = e.target.value; };
+      const cfgjTime = document.getElementById('cfgj-time'); if(cfgjTime) cfgjTime.oninput = e=>{ d.timeCoracao = e.target.value; };
+      const salvarJogadorInfoBtn = document.querySelector('[data-action="salvar-config-jogador-info"]');
+      if(salvarJogadorInfoBtn) salvarJogadorInfoBtn.onclick = async ()=>{
+        const p = myPlayer();
+        p.pe=d.pe; p.altura=d.altura; p.peso=d.peso; p.pe_numero=d.pe_numero; p.timeCoracao=(d.timeCoracao||'').trim();
+        ui.draftConfigJogadorInfo=null;
+        await saveData(); showToast('Informações do jogador atualizadas!'); render();
       };
     }
     if(ui.configSub==='emergencia'){
