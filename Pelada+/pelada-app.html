@@ -1042,7 +1042,8 @@ function traduzErroAuth(e){
             multaCartaoAmarelo: parseFloat(d.multaCartaoAmarelo)||0, multaCartaoVermelho: parseFloat(d.multaCartaoVermelho)||0,
             multaCartaoAzul: parseFloat(d.multaCartaoAzul)||0,
             prazoAvaliacaoHoras: d.prazoAvaliacaoHoras,
-            code: genCode(), adminId:me, memberIds:[me] };
+            code: genCode(), adminId:me, memberIds:[me], moderadores:[], diaristas:[],
+            memberSince:{[me]: new Date().toISOString().slice(0,10)} };
           data.associacoes.push(a);
           associacaoId = a.id;
           ui.assocScreen='list'; ui.draftAssoc=null; ui.assocStep=1;
@@ -1063,7 +1064,18 @@ function traduzErroAuth(e){
       if(!code){ showToast('Digite o código da associação'); return; }
       const a = data.associacoes.find(x=>x.code===code);
       if(!a){ showToast('Código inválido'); return; }
-      if(!a.memberIds.includes(me)) a.memberIds.push(me);
+      if(!a.memberIds.includes(me)){
+        a.memberIds.push(me);
+        a.memberSince = a.memberSince || {};
+        a.memberSince[me] = new Date().toISOString().slice(0,10);
+      }
+      data.groups.filter(g=>g.associacaoId===a.id).forEach(g=>{
+        if(!g.memberIds.includes(me)){
+          g.memberIds.push(me);
+          g.memberSince = g.memberSince || {};
+          g.memberSince[me] = new Date().toISOString().slice(0,10);
+        }
+      });
       associacaoId = a.id; ui.joinCode='';
       await saveData(); await saveMe();
       view='home'; showToast('Você entrou na associação!'); render();
@@ -1276,10 +1288,11 @@ function traduzErroAuth(e){
   function renderNav(){
     const items = [
       {k:'home', ic:'🏟️', label:'Lobby'},
+      {k:'jogadores', ic:'👤', label:'Jogadores'},
       {k:'financeiro', ic:'💰', label:'Financeiro'},
-      {k:'grupos', ic:'👥', label:'Fut'},
+      {k:'grupos', ic:'⚽', label:'Fut'},
       {k:'resenha', ic:'📰', label:'Resenha'},
-      {k:'perfil', ic:'⚙️', label:'Configurações'},
+      {k:'perfil', ic:'⚙️', label:'Config'},
     ];
     return `<div class="nav">
       ${items.map(i=>`<button class="nav-item ${view===i.k?'active':''}" data-nav="${i.k}"><span class="ic">${i.ic}</span>${i.label}</button>`).join('')}
@@ -1289,6 +1302,7 @@ function traduzErroAuth(e){
   function renderView(){
     switch(view){
       case 'home': return renderHome();
+      case 'jogadores': return renderAssocJogadores();
       case 'grupos': return renderGrupos();
       case 'grupo-detalhe': return renderGrupoDetalhe();
       case 'financeiro': return renderFinanceiro();
@@ -1353,6 +1367,73 @@ function traduzErroAuth(e){
         </div>
       </div>
       <button class="btn btn-ghost btn-block" data-goto="desempenho">Ver desempenho completo</button>
+    `;
+  }
+
+  // ---------- JOGADORES (membros da associação) ----------
+  function renderAssocJogadores(){
+    const a = associacaoAtual();
+    if(!a) return `<div class="empty"><span class="ball">🏛️</span>Você ainda não está em nenhuma associação.</div>`;
+    a.moderadores = a.moderadores || [];
+    a.diaristas = a.diaristas || [];
+    a.memberSince = a.memberSince || {};
+    const souAdmin = a.adminId===me || a.moderadores.includes(me);
+    const busca = (ui.buscaJogadoresAssoc||'').toLowerCase();
+    const todos = a.memberIds.map(playerById).filter(Boolean).filter(pl=> !busca || pl.name.toLowerCase().includes(busca));
+    const donos = todos.filter(pl=>pl.id===a.adminId);
+    const admins = todos.filter(pl=>pl.id!==a.adminId && a.moderadores.includes(pl.id));
+    const restante = todos.filter(pl=>pl.id!==a.adminId && !a.moderadores.includes(pl.id));
+    const mensalistas = restante.filter(pl=> !a.diaristas.includes(pl.id));
+    const diaristas = restante.filter(pl=> a.diaristas.includes(pl.id));
+    const linha = (pl, papel) => {
+      const idade = calcAge(pl.nascimento);
+      const desde = a.memberSince[pl.id] ? fmtDateFull(a.memberSince[pl.id]) : '—';
+      const clicavel = souAdmin && pl.id!==me;
+      return `
+        <div class="list-row" ${clicavel?`data-abrir-jogador-acoes="${pl.id}" style="cursor:pointer;"`:''}>
+          <div style="flex:1;">
+            <div class="name">${pl.name}</div>
+            <div class="meta">${idade!==null?idade+' anos · ':''}membro desde ${desde}</div>
+          </div>
+          ${papel==='diarista' ? `<span class="badge badge-done">Diarista</span>` : ''}
+          ${clicavel ? `<div class="meta">›</div>` : ''}
+        </div>`;
+    };
+    return `
+      <h1 class="page-title">👤 Jogadores (${a.memberIds.length})</h1>
+      <p class="lead">Todos os membros de ${a.name}.${souAdmin ? ' Toque num jogador pra gerenciar.' : ''}</p>
+      <input id="assoc-busca-jogador" placeholder="Buscar por nome..." value="${ui.buscaJogadoresAssoc||''}" style="margin-bottom:14px;">
+      <div class="eyebrow">Dono</div>
+      <div class="card">${donos.length===0?`<p class="lead" style="margin:0;">—</p>`:donos.map(pl=>linha(pl,'dono')).join('')}</div>
+      <div class="eyebrow" style="margin-top:14px;">Administradores (${admins.length})</div>
+      <div class="card">${admins.length===0?`<p class="lead" style="margin:0;">Nenhum admin além do dono.</p>`:admins.map(pl=>linha(pl,'admin')).join('')}</div>
+      <div class="eyebrow" style="margin-top:14px;">Mensalistas (${mensalistas.length})</div>
+      <div class="card">${mensalistas.length===0?`<p class="lead" style="margin:0;">Nenhum mensalista.</p>`:mensalistas.map(pl=>linha(pl,'mensalista')).join('')}</div>
+      <div class="eyebrow" style="margin-top:14px;">Diaristas (${diaristas.length})</div>
+      <div class="card">${diaristas.length===0?`<p class="lead" style="margin:0;">Nenhum diarista.</p>`:diaristas.map(pl=>linha(pl,'diarista')).join('')}</div>
+    `;
+  }
+  function renderModalJogadorAcoes(){
+    const a = associacaoAtual();
+    const pl = playerById(ui.jogadorAcoesId);
+    if(!a || !pl) return '';
+    const ehAdmin = (a.moderadores||[]).includes(pl.id);
+    const ehDiarista = (a.diaristas||[]).includes(pl.id);
+    return `
+      <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:22px;">${pl.name}</h1>
+        <p class="lead">Membro desde ${a.memberSince && a.memberSince[pl.id] ? fmtDateFull(a.memberSince[pl.id]) : '—'}</p>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${ehAdmin
+            ? `<button class="btn btn-ghost btn-block" data-assoc-rebaixar-admin="${pl.id}">Remover administração</button>`
+            : `<button class="btn btn-ghost btn-block" data-assoc-promover-admin="${pl.id}">Tornar administrador</button>`}
+          ${ehDiarista
+            ? `<button class="btn btn-ghost btn-block" data-assoc-marcar-mensalista="${pl.id}">Marcar mensalista</button>`
+            : `<button class="btn btn-ghost btn-block" data-assoc-marcar-diarista="${pl.id}">Marcar diarista</button>`}
+          <button class="btn btn-danger btn-block" data-assoc-expulsar="${pl.id}">Remover da associação</button>
+        </div>
+      </div></div>
     `;
   }
 
@@ -2995,6 +3076,7 @@ function traduzErroAuth(e){
   // ---------- MODALS ----------
   function renderModal(){
     if(ui.modal==='marcar-fut') return renderModalMarcarFut();
+    if(ui.modal==='jogador-acoes') return renderModalJogadorAcoes();
     return '';
   }
   function obterOuCriarFutPadrao(){
@@ -3504,7 +3586,53 @@ function traduzErroAuth(e){
       await saveData(); showToast('Fut marcado! Confirmações abertas.'); render();
     };
 
-    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; render(); } });
+    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; ui.jogadorAcoesId=null; render(); } });
+
+    // ---- Jogadores da associação ----
+    const buscaAssocJogadorInput = document.getElementById('assoc-busca-jogador');
+    if(buscaAssocJogadorInput) buscaAssocJogadorInput.oninput = e=>{ ui.buscaJogadoresAssoc = e.target.value; render(); };
+    document.querySelectorAll('[data-abrir-jogador-acoes]').forEach(el=> el.onclick = ()=>{
+      ui.jogadorAcoesId = el.dataset.abrirJogadorAcoes; ui.modal='jogador-acoes'; render();
+    });
+    document.querySelectorAll('[data-assoc-promover-admin]').forEach(el=> el.onclick = async ()=>{
+      const a = associacaoAtual(); a.moderadores = a.moderadores||[];
+      const pid = el.dataset.assocPromoverAdmin;
+      if(!a.moderadores.includes(pid)) a.moderadores.push(pid);
+      ui.modal=null; ui.jogadorAcoesId=null;
+      await saveData(); showToast('Agora é administrador da associação.'); render();
+    });
+    document.querySelectorAll('[data-assoc-rebaixar-admin]').forEach(el=> el.onclick = async ()=>{
+      const a = associacaoAtual();
+      const pid = el.dataset.assocRebaixarAdmin;
+      a.moderadores = (a.moderadores||[]).filter(id=>id!==pid);
+      ui.modal=null; ui.jogadorAcoesId=null;
+      await saveData(); showToast('Removido da administração.'); render();
+    });
+    document.querySelectorAll('[data-assoc-marcar-diarista]').forEach(el=> el.onclick = async ()=>{
+      const a = associacaoAtual(); a.diaristas = a.diaristas||[];
+      const pid = el.dataset.assocMarcarDiarista;
+      if(!a.diaristas.includes(pid)) a.diaristas.push(pid);
+      ui.modal=null; ui.jogadorAcoesId=null;
+      await saveData(); showToast('Agora é diarista.'); render();
+    });
+    document.querySelectorAll('[data-assoc-marcar-mensalista]').forEach(el=> el.onclick = async ()=>{
+      const a = associacaoAtual();
+      const pid = el.dataset.assocMarcarMensalista;
+      a.diaristas = (a.diaristas||[]).filter(id=>id!==pid);
+      ui.modal=null; ui.jogadorAcoesId=null;
+      await saveData(); showToast('Agora é mensalista.'); render();
+    });
+    document.querySelectorAll('[data-assoc-expulsar]').forEach(el=> el.onclick = async ()=>{
+      const a = associacaoAtual();
+      const pid = el.dataset.assocExpulsar;
+      const nome = (playerById(pid)||{}).name || 'Jogador';
+      a.memberIds = a.memberIds.filter(id=>id!==pid);
+      a.moderadores = (a.moderadores||[]).filter(id=>id!==pid);
+      a.diaristas = (a.diaristas||[]).filter(id=>id!==pid);
+      data.groups.filter(g=>g.associacaoId===a.id).forEach(g=>{ g.memberIds = g.memberIds.filter(id=>id!==pid); });
+      ui.modal=null; ui.jogadorAcoesId=null;
+      await saveData(); showToast(`${nome} removido da associação.`); render();
+    });
 
     document.querySelectorAll('[data-gtab]').forEach(el=> el.onclick = ()=>{ ui.groupTab = el.dataset.gtab; ui.futConfigSub=null; render(); });
 
