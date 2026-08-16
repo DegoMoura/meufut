@@ -2135,11 +2135,13 @@ function traduzErroAuth(e){
   }
   function finStatusJogador(a, pl, mesKey){
     const registro = ((a.pagamentosMensalidade||{})[mesKey]||{})[pl.id];
-    if(registro && registro.pago) return 'em-dia';
-    const venc = parseInt(a.mensalidadeVencimento)||10;
-    const hoje = new Date();
-    const vencimentoData = new Date(hoje.getFullYear(), hoje.getMonth(), venc);
-    return hoje > vencimentoData ? 'em-atraso' : 'pendente';
+    return (registro && registro.pago) ? 'em-dia' : 'em-atraso';
+  }
+  function waLink(numero, texto){
+    const digits = (numero||'').replace(/\D/g,'');
+    if(!digits) return null;
+    const comDDI = digits.startsWith('55') ? digits : '55'+digits;
+    return `https://wa.me/${comDDI}?text=${encodeURIComponent(texto)}`;
   }
   function finTransacaoRow(t){
     const positivo = t.natureza==='receita' || t.natureza==='recebimento';
@@ -2170,6 +2172,7 @@ function traduzErroAuth(e){
     }
     if(ui.finJogadorId) return renderFinJogadorDetalhe(a);
     if(ui.finTelaSelecao) return renderSelecionarJogadoresFinanceiro(a);
+    if(ui.finStatusFiltro) return renderFinStatusLista(a, podeEditar);
     const tab = ui.finTab || 'resumo';
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>
@@ -2192,15 +2195,7 @@ function traduzErroAuth(e){
     const membros = finMembrosPagantes(a);
     const emDia = membros.filter(pl=>finStatusJogador(a,pl,mesKey)==='em-dia').length;
     const emAtraso = membros.filter(pl=>finStatusJogador(a,pl,mesKey)==='em-atraso').length;
-    const naoPagaram = membros.filter(pl=>finStatusJogador(a,pl,mesKey)==='pendente').length;
     const aReceber = membros.reduce((s,pl)=> s + calcularSaldoJogador(pl.id, a, mesKey).total, 0);
-    if(ui.finEditandoConfig && !ui.draftFinConfig){
-      ui.draftFinConfig = {
-        chavePix: a.chavePix||'', mensalidadeValor: a.mensalidadeValor||'', valorDiaria: a.valorDiaria||'',
-        valorCampo: a.valorCampo||'', mensalidadeVencimento: a.mensalidadeVencimento||''
-      };
-    }
-    const editando = podeEditar && ui.finEditandoConfig;
     return `
       <div class="card">
         <div class="fin-label" style="margin-bottom:2px;">Saldo em caixa</div>
@@ -2218,24 +2213,10 @@ function traduzErroAuth(e){
         <div class="fin-kpi"><div class="fin-kpi-icon">📉</div><div class="fin-kpi-label">Saídas do mês</div><div class="fin-kpi-value" style="color:#e8917a;">-R$ ${saidas.toFixed(2)}</div></div>
         <div class="fin-kpi"><div class="fin-kpi-icon">⚖️</div><div class="fin-kpi-label">Balanço do mês</div><div class="fin-kpi-value">R$ ${(entradas-saidas).toFixed(2)}</div></div>
         <div class="fin-kpi"><div class="fin-kpi-icon">⬇️</div><div class="fin-kpi-label">A receber</div><div class="fin-kpi-value">R$ ${aReceber.toFixed(2)}</div></div>
-        <div class="fin-kpi"><div class="fin-kpi-icon">✅</div><div class="fin-kpi-label">Jogadores em dia</div><div class="fin-kpi-value" style="color:#6fe3b4;">${emDia}</div></div>
-        <div class="fin-kpi"><div class="fin-kpi-icon">⚠️</div><div class="fin-kpi-label">Jogadores em atraso</div><div class="fin-kpi-value" style="color:#e8917a;">${emAtraso}</div></div>
-        <div class="fin-kpi"><div class="fin-kpi-icon">🔕</div><div class="fin-kpi-label">Não pagaram</div><div class="fin-kpi-value">${naoPagaram}</div></div>
+        <div class="fin-kpi" data-fin-status-ver="em-dia" style="cursor:pointer;"><div class="fin-kpi-icon">✅</div><div class="fin-kpi-label">Jogadores em dia</div><div class="fin-kpi-value" style="color:#6fe3b4;">${emDia}</div></div>
+        <div class="fin-kpi" data-fin-status-ver="em-atraso" style="cursor:pointer;"><div class="fin-kpi-icon">⚠️</div><div class="fin-kpi-label">Jogadores em atraso</div><div class="fin-kpi-value" style="color:#e8917a;">${emAtraso}</div></div>
         <div class="fin-kpi"><div class="fin-kpi-icon">👥</div><div class="fin-kpi-label">Qtd de mensalistas</div><div class="fin-kpi-value">${membros.length}</div></div>
       </div>
-      ${podeEditar ? `
-      <div class="card" style="margin-top:12px;">
-        <button class="btn btn-ghost btn-sm" data-action="editar-fin-config">${editando?'Cancelar':'✏️ Editar valores'}</button>
-        ${editando ? `
-          <div class="divider-field"></div>
-          <label>Chave PIX</label><input id="fc-pix" value="${ui.draftFinConfig.chavePix}">
-          <label>Mensalidade (R$)</label><input id="fc-mensalidade" type="number" value="${ui.draftFinConfig.mensalidadeValor}">
-          <label>Diária (R$)</label><input id="fc-diaria" type="number" value="${ui.draftFinConfig.valorDiaria}">
-          <label>Valor do campo (R$)</label><input id="fc-campo" type="number" value="${ui.draftFinConfig.valorCampo}">
-          <label>Dia do vencimento</label><input id="fc-venc" type="number" min="1" max="28" value="${ui.draftFinConfig.mensalidadeVencimento}">
-          <button class="btn btn-gold btn-block" style="margin-top:10px;" data-action="salvar-fin-config">Salvar</button>
-        ` : ''}
-      </div>` : ''}
       ${podeEditar ? `
       <div class="card" style="margin-top:12px;">
         <div class="list-row">
@@ -2243,6 +2224,34 @@ function traduzErroAuth(e){
           <button class="btn btn-sm ${a.financeiroSoAdmin?'btn-gold':'btn-ghost'}" data-action="toggle-fin-so-admin">${a.financeiroSoAdmin?'Ativado':'Desativado'}</button>
         </div>
       </div>` : ''}
+    `;
+  }
+  function renderFinStatusLista(a, podeEditar){
+    const mesKey = mesAtualKey();
+    const status = ui.finStatusFiltro;
+    const membros = finMembrosPagantes(a).filter(pl=> finStatusJogador(a,pl,mesKey)===status);
+    const titulo = status==='em-dia' ? '✅ Jogadores em dia' : '⚠️ Jogadores em atraso';
+    const mensagemPara = pl => {
+      const saldo = calcularSaldoJogador(pl.id, a, mesKey);
+      const pixTexto = a.chavePix ? `\nChave PIX: ${a.chavePix}` : '';
+      return `Olá ${pl.name.split(' ')[0]}! Sua mensalidade do ${a.name} está pendente: R$ ${saldo.total.toFixed(2)}.${pixTexto}\nObrigado!`;
+    };
+    return `
+      <button class="btn btn-ghost btn-sm" data-action="fin-status-voltar" style="margin-bottom:12px;">← Resumo</button>
+      <h1 class="page-title" style="font-size:20px;">${titulo}</h1>
+      ${status==='em-atraso' && podeEditar && membros.length>0 ? `<button class="btn btn-gold btn-block" style="margin-bottom:12px;" data-action="fin-notificar-todos">🔔 Notificar todos os pendentes</button>` : ''}
+      ${membros.length===0 ? `<div class="empty"><span class="ball">💰</span>Ninguém nessa lista.</div>` :
+        `<div class="card">${membros.map(pl=>{
+          const saldo = calcularSaldoJogador(pl.id, a, mesKey);
+          const link = waLink(pl.whatsapp, mensagemPara(pl));
+          return `
+          <div class="list-row">
+            <div style="flex:1;min-width:0;"><div class="name">${pl.name}</div>${status==='em-atraso'?`<div class="meta" style="color:#e8917a;">Vencido R$ ${saldo.total.toFixed(2)}</div>`:''}</div>
+            ${status==='em-atraso' && podeEditar ? (link
+              ? `<a class="btn btn-sm btn-ghost" href="${link}" target="_blank" rel="noopener">📤 Notificar</a>`
+              : `<span class="meta">Sem WhatsApp</span>`) : ''}
+          </div>`;
+        }).join('')}</div>`}
     `;
   }
   function renderFinCaixa(a, podeEditar){
@@ -2289,7 +2298,7 @@ function traduzErroAuth(e){
         <div class="list-row">
           <div style="flex:1;min-width:0;cursor:pointer;" data-fin-abrir-jogador="${pl.id}">
             <div class="name">${pl.name}</div>${status!=='em-dia'?`<div class="meta" style="color:#e8917a;">Vencido R$ ${saldo.total.toFixed(2)}</div>`:''}
-            <span class="badge ${status==='em-dia'?'badge-done':'badge-full'}" style="margin-top:4px;display:inline-block;">${status==='em-dia'?'✓ Em dia':status==='em-atraso'?'⏱ Em atraso':'Pendente'}</span>
+            <span class="badge ${status==='em-dia'?'badge-done':'badge-full'}" style="margin-top:4px;display:inline-block;">${status==='em-dia'?'✓ Em dia':'⏱ Em atraso'}</span>
           </div>
           ${podeEditar ? (status==='em-dia'
             ? `<button class="btn btn-sm btn-ghost" data-fin-marcar-atraso="${pl.id}">Marcar em atraso</button>`
@@ -3593,8 +3602,9 @@ function traduzErroAuth(e){
   function attachGlobalHandlers(){
     document.querySelectorAll('[data-nav]').forEach(el=> el.onclick = ()=>{
       ui.matchId=null; ui.groupId=null; ui.resenhaSub=null; ui.configSub=null; ui.futConfigSub=null;
-      ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finEditandoConfig=false; ui.draftFinConfig=null;
+      ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finStatusFiltro=null;
       ui.finSelecionados=[]; ui.finBuscaJogador=''; ui.finSelBusca=''; ui.draftTransacao=null; ui.draftCobranca=null;
+      ui.draftBaixa=null; ui.finBaixaJogadorId=null;
       view = el.dataset.nav; render();
     });
     document.querySelectorAll('[data-goto]').forEach(el=> el.onclick = ()=>{ view = el.dataset.goto; render(); });
@@ -3626,8 +3636,8 @@ function traduzErroAuth(e){
       ui.configSub=null; ui.draftConfigPessoais=null; ui.draftConfigEmergencia=null; ui.draftConfigLogin=null;
       ui.futConfigSub=null; ui.draftCfgGrupo=null; ui.draftCfgAval=null; ui.draftCfgHorario=null;
       ui.draftCfgLocal=null; ui.draftCfgSorteio=null; ui.draftCfgFila=null; ui.draftFormacao=null; ui.classificarAberto=null;
-      ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finEditandoConfig=false;
-      ui.draftFinConfig=null; ui.finSelecionados=[]; ui.finBuscaJogador=''; ui.finSelBusca='';
+      ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finStatusFiltro=null;
+      ui.finSelecionados=[]; ui.finBuscaJogador=''; ui.finSelBusca='';
       ui.draftBaixa=null; ui.finBaixaJogadorId=null;
       render();
     };
@@ -4001,6 +4011,24 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-fin-caixa-ver]').forEach(el=> el.onclick = ()=>{ ui.finCaixaFiltro = el.dataset.finCaixaVer; render(); });
     const finCaixaVoltarBtn = document.querySelector('[data-action="fin-caixa-voltar"]');
     if(finCaixaVoltarBtn) finCaixaVoltarBtn.onclick = ()=>{ ui.finCaixaFiltro=null; render(); };
+    document.querySelectorAll('[data-fin-status-ver]').forEach(el=> el.onclick = ()=>{ ui.finStatusFiltro = el.dataset.finStatusVer; render(); });
+    const finStatusVoltarBtn = document.querySelector('[data-action="fin-status-voltar"]');
+    if(finStatusVoltarBtn) finStatusVoltarBtn.onclick = ()=>{ ui.finStatusFiltro=null; render(); };
+    const finNotificarTodosBtn = document.querySelector('[data-action="fin-notificar-todos"]');
+    if(finNotificarTodosBtn) finNotificarTodosBtn.onclick = ()=>{
+      if(!souAdminAssoc()) return;
+      const a = associacaoAtual();
+      const mesKey = mesAtualKey();
+      const membros = finMembrosPagantes(a).filter(pl=> finStatusJogador(a,pl,mesKey)==='em-atraso');
+      const comWhats = membros.filter(pl=> waLink(pl.whatsapp,'x'));
+      if(comWhats.length===0){ showToast('Nenhum pendente tem WhatsApp cadastrado.'); return; }
+      const primeiro = comWhats[0];
+      const saldo = calcularSaldoJogador(primeiro.id, a, mesKey);
+      const pixTexto = a.chavePix ? `\nChave PIX: ${a.chavePix}` : '';
+      const msg = `Olá ${primeiro.name.split(' ')[0]}! Sua mensalidade do ${a.name} está pendente: R$ ${saldo.total.toFixed(2)}.${pixTexto}\nObrigado!`;
+      window.open(waLink(primeiro.whatsapp, msg), '_blank');
+      showToast(comWhats.length>1 ? `Abrindo WhatsApp de ${primeiro.name}. Toque em "Notificar" nos demais ${comWhats.length-1} abaixo.` : 'WhatsApp aberto!');
+    };
     document.querySelectorAll('[data-fin-abrir-jogador]').forEach(el=> el.onclick = ()=>{ ui.finJogadorId = el.dataset.finAbrirJogador; render(); });
     const finFecharJogadorBtn = document.querySelector('[data-action="fin-fechar-jogador"]');
     if(finFecharJogadorBtn) finFecharJogadorBtn.onclick = ()=>{ ui.finJogadorId=null; render(); };
@@ -4057,28 +4085,6 @@ function traduzErroAuth(e){
       };
     }
 
-    const editarFinConfigBtn = document.querySelector('[data-action="editar-fin-config"]');
-    if(editarFinConfigBtn) editarFinConfigBtn.onclick = ()=>{
-      ui.finEditandoConfig = !ui.finEditandoConfig; ui.draftFinConfig=null; render();
-    };
-    if(ui.finEditandoConfig && ui.draftFinConfig){
-      const d = ui.draftFinConfig;
-      const fcPix = document.getElementById('fc-pix'); if(fcPix) fcPix.oninput = e=>{ d.chavePix = e.target.value; };
-      const fcMens = document.getElementById('fc-mensalidade'); if(fcMens) fcMens.oninput = e=>{ d.mensalidadeValor = e.target.value; };
-      const fcDiaria = document.getElementById('fc-diaria'); if(fcDiaria) fcDiaria.oninput = e=>{ d.valorDiaria = e.target.value; };
-      const fcCampo = document.getElementById('fc-campo'); if(fcCampo) fcCampo.oninput = e=>{ d.valorCampo = e.target.value; };
-      const fcVenc = document.getElementById('fc-venc'); if(fcVenc) fcVenc.oninput = e=>{ d.mensalidadeVencimento = e.target.value; };
-      const salvarFcBtn = document.querySelector('[data-action="salvar-fin-config"]');
-      if(salvarFcBtn) salvarFcBtn.onclick = async ()=>{
-        if(!souAdminAssoc()) return;
-        const a = associacaoAtual();
-        a.chavePix = d.chavePix; a.mensalidadeValor = parseFloat(d.mensalidadeValor)||0;
-        a.valorDiaria = parseFloat(d.valorDiaria)||0; a.valorCampo = parseFloat(d.valorCampo)||0;
-        a.mensalidadeVencimento = parseInt(d.mensalidadeVencimento)||a.mensalidadeVencimento;
-        ui.finEditandoConfig=false; ui.draftFinConfig=null;
-        await saveData(); showToast('Dados financeiros atualizados!'); render();
-      };
-    }
 
     const abrirCriarTransacaoBtn = document.querySelector('[data-action="abrir-criar-transacao"]');
     if(abrirCriarTransacaoBtn) abrirCriarTransacaoBtn.onclick = ()=>{
