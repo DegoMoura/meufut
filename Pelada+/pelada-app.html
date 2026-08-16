@@ -2093,25 +2093,9 @@ function traduzErroAuth(e){
     `;
   }
   function renderHistoricoPagamento(a){
-    const meses = Object.keys(a.pagamentosMensalidade||{}).sort().reverse();
-    const comRegistro = meses.filter(mesKey => (a.pagamentosMensalidade[mesKey]||{})[me]);
-    if(comRegistro.length===0) return `<p class="lead" style="margin:0;">Nenhum histórico ainda.</p>`;
-    return comRegistro.map(mesKey=>{
-      const reg = a.pagamentosMensalidade[mesKey][me];
-      const pago = !!reg.pago;
-      return `
-        <div class="hist-row">
-          <div class="hist-icon ${pago?'hist-icon-in':'hist-icon-out'}">${pago?'↓':'↑'}</div>
-          <div style="flex:1;min-width:0;">
-            <div class="name">Mensalidade</div>
-            <div class="meta">${mesLabel(mesKey)}</div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-weight:700;color:${pago?'#6fe3b4':'#e8917a'};">${pago?'':'-'}R$ ${a.mensalidadeValor||0},00</div>
-            <div class="meta">${fmtDateFull(reg.data)}</div>
-          </div>
-        </div>`;
-    }).join('');
+    const recebimentos = (a.transacoes||[]).filter(t=> t.jogadorId===me && t.natureza==='recebimento').sort((x,y)=> y.data.localeCompare(x.data));
+    if(recebimentos.length===0) return `<p class="lead" style="margin:0;">Nenhum histórico ainda.</p>`;
+    return recebimentos.map(t=> finTransacaoRow(t, false)).join('');
   }
 
   // ---------- FINANCEIRO (Configurações) ----------
@@ -2148,15 +2132,17 @@ function traduzErroAuth(e){
     const comDDI = digits.startsWith('55') ? digits : '55'+digits;
     return `https://wa.me/${comDDI}?text=${encodeURIComponent(texto)}`;
   }
-  function finTransacaoRow(t){
+  function finTransacaoRow(t, mostrarNome){
+    if(mostrarNome===undefined) mostrarNome = true;
     const positivo = t.natureza==='receita' || t.natureza==='recebimento';
-    const pl = t.jogadorId ? playerById(t.jogadorId) : null;
+    const pl = (mostrarNome && t.jogadorId) ? playerById(t.jogadorId) : null;
     return `
       <div class="hist-row">
         <div class="hist-icon ${positivo?'hist-icon-in':'hist-icon-out'}">${positivo?'↓':'↑'}</div>
         <div style="flex:1;min-width:0;">
           <div class="name">${t.categoria}${pl?' · '+pl.name:''}</div>
           <div class="meta">${t.descricao||fmtDateFull(t.data)}</div>
+          ${t.detalhes && t.detalhes.length ? `<div class="meta" style="margin-top:2px;opacity:.8;">${t.detalhes.map(d=>`${d.label}: R$ ${d.valor.toFixed(2)}`).join(' · ')}</div>` : ''}
         </div>
         <div style="text-align:right;">
           <div style="font-weight:700;color:${positivo?'#6fe3b4':'#e8917a'};">${positivo?'+':'-'}R$ ${t.valor.toFixed(2)}</div>
@@ -4125,9 +4111,11 @@ function traduzErroAuth(e){
         const pid = ui.finBaixaJogadorId;
         const mesKey = mesAtualKey();
         const valor = parseFloat(d.valor)||0;
-        const saldoAntes = calcularSaldoJogador(pid, a, mesKey).total;
+        const saldoInfo = calcularSaldoJogador(pid, a, mesKey);
+        const saldoAntes = saldoInfo.total;
+        const detalhes = saldoInfo.itens.filter(it=>it.valor>0).map(it=>({label:it.label, valor:it.valor}));
         a.transacoes.push({ id: uid(), natureza:'recebimento', categoria:'Mensalidade', valor,
-          descricao: d.descricao || mesLabel(mesKey), data: d.data, jogadorId: pid, criadoPor: me, criadoEm: new Date().toISOString() });
+          descricao: d.descricao || mesLabel(mesKey), data: d.data, jogadorId: pid, criadoPor: me, criadoEm: new Date().toISOString(), detalhes });
         a.pagamentosMensalidade[mesKey] = a.pagamentosMensalidade[mesKey] || {};
         const registroAtual = a.pagamentosMensalidade[mesKey][pid] || { valorPago:0 };
         const novoValorPago = (registroAtual.valorPago||0) + valor;
