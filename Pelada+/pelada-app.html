@@ -233,7 +233,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  signOut, GoogleAuthProvider, OAuthProvider, signInWithPopup
+  signOut, GoogleAuthProvider, OAuthProvider, signInWithPopup,
+  sendEmailVerification, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
@@ -263,6 +264,8 @@ function traduzErroAuth(e){
     'auth/popup-closed-by-user':'Login cancelado.',
     'auth/operation-not-allowed':'Esse método de login ainda não está disponível.',
     'auth/network-request-failed':'Falha de conexão. Verifique sua internet.',
+    'auth/too-many-requests':'Muitas tentativas. Aguarde um pouco e tente de novo.',
+    'auth/missing-email':'Digite seu e-mail no campo acima primeiro.',
   };
   return map[code] || 'Não foi possível entrar. Tente de novo.';
 }
@@ -292,30 +295,33 @@ function traduzErroAuth(e){
   const pick = arr => arr[randInt(0,arr.length-1)];
 
   async function loadAll(){
-    onAuthStateChanged(auth, async (user)=>{
-      if(!user){ me = null; view = 'login'; render(); return; }
-      me = user.uid;
-      try{
-        const snap = await getDoc(doc(db,'appdata','main'));
-        if(snap.exists()){
-          const d2 = snap.data();
-          data = { players: d2.players||[], groups: d2.groups||[], matches: d2.matches||[], associacoes: d2.associacoes||[] };
-        }
-      }catch(e){ showToast('Erro ao carregar dados. Tente de novo.'); }
-      if(!data.associacoes) data.associacoes = [];
-      if(!data.players.find(p=>p.id===me)){
-        const providerId = (user.providerData[0] && user.providerData[0].providerId) || 'password';
-        ui.draftPlayer = { name: user.displayName||'', usuario: user.email||user.uid, senha:null,
-          googleConnected: providerId==='google.com', appleConnected: providerId==='apple.com', whatsapp:'',
-          nascimento:'', estado:'', cidade:'', genero:'Masculino', estadoCivil:'Solteiro', filhos:'Não',
-          posicaoPrincipal:{}, pe:'Direito', altura:'', peso:'', pe_numero:'', timeCoracao:'',
-          stars: Object.fromEntries(CAMPO_TIPOS.map(t=>[t, Object.fromEntries(posicoesParaCampo(t).map(pos=>[pos,5]))])) };
-        view = 'onboarding'; render(); return;
+    onAuthStateChanged(auth, (user)=> routeUser(user));
+  }
+  async function routeUser(user){
+    if(!user){ me = null; view = 'login'; render(); return; }
+    const isPasswordProvider = user.providerData.some(p=>p.providerId==='password');
+    if(isPasswordProvider && !user.emailVerified){ view = 'verify-email'; render(); return; }
+    me = user.uid;
+    try{
+      const snap = await getDoc(doc(db,'appdata','main'));
+      if(snap.exists()){
+        const d2 = snap.data();
+        data = { players: d2.players||[], groups: d2.groups||[], matches: d2.matches||[], associacoes: d2.associacoes||[] };
       }
-      try{ associacaoId = localStorage.getItem('peladaapp:associacaoId') || null; }catch(e){}
-      routeAfterLogin();
-      render();
-    });
+    }catch(e){ showToast('Erro ao carregar dados. Tente de novo.'); }
+    if(!data.associacoes) data.associacoes = [];
+    if(!data.players.find(p=>p.id===me)){
+      const providerId = (user.providerData[0] && user.providerData[0].providerId) || 'password';
+      ui.draftPlayer = { name: user.displayName||'', usuario: user.email||user.uid, senha:null,
+        googleConnected: providerId==='google.com', appleConnected: providerId==='apple.com', whatsapp:'',
+        nascimento:'', estado:'', cidade:'', genero:'Masculino', estadoCivil:'Solteiro', filhos:'Não',
+        posicaoPrincipal:{}, pe:'Direito', altura:'', peso:'', pe_numero:'', timeCoracao:'',
+        stars: Object.fromEntries(CAMPO_TIPOS.map(t=>[t, Object.fromEntries(posicoesParaCampo(t).map(pos=>[pos,5]))])) };
+      view = 'onboarding'; render(); return;
+    }
+    try{ associacaoId = localStorage.getItem('peladaapp:associacaoId') || null; }catch(e){}
+    routeAfterLogin();
+    render();
   }
   function routeAfterLogin(){
     const a = associacaoId ? data.associacoes.find(x=>x.id===associacaoId) : null;
@@ -573,6 +579,7 @@ function traduzErroAuth(e){
     const root = document.getElementById('root');
     if(view==='loading'){ root.innerHTML = `<div class="app"><div class="empty">Carregando...</div></div>`; return; }
     if(view==='login'){ root.innerHTML = renderLogin(); attachLogin(); return; }
+    if(view==='verify-email'){ root.innerHTML = renderVerifyEmail(); attachVerifyEmail(); return; }
     if(view==='onboarding'){ root.innerHTML = renderOnboarding(); attachOnboarding(); return; }
     if(view==='associacoes'){ root.innerHTML = renderAssociacoes(); attachAssociacoes(); return; }
     if(view==='desempenho'){
@@ -616,7 +623,10 @@ function traduzErroAuth(e){
           <input id="lg-user" placeholder="voce@email.com" value="${ui.loginUser||''}">
           <label>Senha</label>
           <input id="lg-pass" type="password" placeholder="••••••••">
-          <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="entrar">Entrar</button>
+          <div style="text-align:right;margin-top:8px;">
+            <span style="color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;" data-action="esqueci-senha">Esqueci minha senha</span>
+          </div>
+          <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="entrar">Entrar</button>
           <div style="text-align:center;margin:14px 0;color:var(--ink-dim);font-size:12px;">ou</div>
           <button class="btn btn-ghost btn-block" data-action="google-login">🔵 Continuar com Google</button>
           <button class="btn btn-ghost btn-block" style="margin-top:10px;" data-action="apple-login"> Continuar com Apple</button>
@@ -641,7 +651,16 @@ function traduzErroAuth(e){
       const senha = document.getElementById('lg-pass').value;
       if(!email || !senha){ showToast('Preencha e-mail e senha para criar a conta'); return; }
       if(senha.length < 6){ showToast('A senha precisa ter pelo menos 6 caracteres'); return; }
-      try{ await createUserWithEmailAndPassword(auth, email, senha); }
+      try{
+        const cred = await createUserWithEmailAndPassword(auth, email, senha);
+        await sendEmailVerification(cred.user);
+      }
+      catch(e){ showToast(traduzErroAuth(e)); }
+    };
+    document.querySelector('[data-action="esqueci-senha"]').onclick = async ()=>{
+      const email = document.getElementById('lg-user').value.trim();
+      if(!email){ showToast('Digite seu e-mail no campo acima primeiro'); return; }
+      try{ await sendPasswordResetEmail(auth, email); showToast('E-mail de recuperação enviado! Confira sua caixa de entrada.'); }
       catch(e){ showToast(traduzErroAuth(e)); }
     };
     document.querySelector('[data-action="google-login"]').onclick = async ()=>{
@@ -651,6 +670,41 @@ function traduzErroAuth(e){
     document.querySelector('[data-action="apple-login"]').onclick = async ()=>{
       try{ await signInWithPopup(auth, appleProvider); }
       catch(e){ showToast(traduzErroAuth(e)); }
+    };
+  }
+
+  // ---------- VERIFICAÇÃO DE E-MAIL ----------
+  function renderVerifyEmail(){
+    const email = (auth.currentUser && auth.currentUser.email) || '';
+    return `
+      <div class="app"><div class="content" style="padding-top:60px;">
+        <div class="brand"><span class="ball">⚽</span> PELADA<span style="color:var(--gold)">+</span></div>
+        <div class="brand-sub">app da associação</div>
+        <div class="eyebrow" style="margin-top:30px;">Confirme seu e-mail</div>
+        <h1 class="page-title">Quase lá</h1>
+        <p class="lead">Enviamos um link de confirmação para <strong>${email}</strong>. Abra seu e-mail (e confira o spam) e toque no link pra ativar sua conta.</p>
+        <div class="card">
+          <button class="btn btn-gold btn-block" data-action="ja-confirmei">Já confirmei, entrar</button>
+          <button class="btn btn-ghost btn-block" style="margin-top:10px;" data-action="reenviar-verificacao">Reenviar e-mail</button>
+          <button class="btn btn-ghost btn-block" style="margin-top:10px;" data-action="trocar-conta">Usar outra conta</button>
+        </div>
+      </div></div>
+    `;
+  }
+  function attachVerifyEmail(){
+    document.querySelector('[data-action="ja-confirmei"]').onclick = async ()=>{
+      try{
+        await auth.currentUser.reload();
+        if(auth.currentUser.emailVerified){ await routeUser(auth.currentUser); }
+        else showToast('Ainda não identificamos a confirmação. Verifique seu e-mail e tente de novo.');
+      }catch(e){ showToast('Erro ao verificar. Tente de novo.'); }
+    };
+    document.querySelector('[data-action="reenviar-verificacao"]').onclick = async ()=>{
+      try{ await sendEmailVerification(auth.currentUser); showToast('E-mail reenviado!'); }
+      catch(e){ showToast(traduzErroAuth(e)); }
+    };
+    document.querySelector('[data-action="trocar-conta"]').onclick = async ()=>{
+      try{ await signOut(auth); }catch(e){}
     };
   }
 
