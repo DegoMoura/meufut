@@ -1369,17 +1369,26 @@ function traduzErroAuth(e){
   }
 
   // ---------- JOGADORES (membros da associação) ----------
+  function memberSinceFor(a, playerId){
+    if(a.memberSince && a.memberSince[playerId]) return a.memberSince[playerId];
+    const datas = data.groups
+      .filter(gr=>gr.associacaoId===a.id && gr.memberSince && gr.memberSince[playerId])
+      .map(gr=>gr.memberSince[playerId]);
+    if(datas.length) return datas.sort()[0];
+    return null;
+  }
   function renderModalJogadorAcoes(){
     const a = associacaoAtual();
     const pl = playerById(ui.jogadorAcoesId);
-    if(!a || !pl) return '';
+    if(!a || !pl || pl.id===a.adminId) return '';
     const ehAdmin = (a.moderadores||[]).includes(pl.id);
     const ehDiarista = (a.diaristas||[]).includes(pl.id);
+    const desdeIso = memberSinceFor(a, pl.id);
     return `
       <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
         <div class="modal-handle"></div>
         <h1 class="page-title" style="font-size:22px;">${pl.name}</h1>
-        <p class="lead">Membro desde ${a.memberSince && a.memberSince[pl.id] ? fmtDateFull(a.memberSince[pl.id]) : '—'}</p>
+        <p class="lead">Membro desde ${desdeIso ? fmtDateFull(desdeIso) : '—'}</p>
         <div style="display:flex;flex-direction:column;gap:10px;">
           ${ehAdmin
             ? `<button class="btn btn-ghost btn-block" data-assoc-rebaixar-admin="${pl.id}">Remover administração</button>`
@@ -1742,8 +1751,9 @@ function traduzErroAuth(e){
     const diaristas = restante.filter(pl=> a.diaristas.includes(pl.id));
     const linha = (pl, papel) => {
       const idade = calcAge(pl.nascimento);
-      const desde = a.memberSince[pl.id] ? fmtDateFull(a.memberSince[pl.id]) : '—';
-      const clicavel = souAdmin && pl.id!==me;
+      const desdeIso = memberSinceFor(a, pl.id);
+      const desde = desdeIso ? fmtDateFull(desdeIso) : '—';
+      const clicavel = souAdmin && pl.id!==me && pl.id!==a.adminId;
       return `
         <div class="list-row" ${clicavel?`data-abrir-jogador-acoes="${pl.id}" style="cursor:pointer;"`:''}>
           <div style="flex:1;">
@@ -3578,6 +3588,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-assoc-promover-admin]').forEach(el=> el.onclick = async ()=>{
       const a = associacaoAtual(); a.moderadores = a.moderadores||[];
       const pid = el.dataset.assocPromoverAdmin;
+      if(pid===a.adminId) return;
       if(!a.moderadores.includes(pid)) a.moderadores.push(pid);
       ui.modal=null; ui.jogadorAcoesId=null;
       await saveData(); showToast('Agora é administrador da associação.'); render();
@@ -3585,6 +3596,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-assoc-rebaixar-admin]').forEach(el=> el.onclick = async ()=>{
       const a = associacaoAtual();
       const pid = el.dataset.assocRebaixarAdmin;
+      if(pid===a.adminId) return;
       a.moderadores = (a.moderadores||[]).filter(id=>id!==pid);
       ui.modal=null; ui.jogadorAcoesId=null;
       await saveData(); showToast('Removido da administração.'); render();
@@ -3592,6 +3604,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-assoc-marcar-diarista]').forEach(el=> el.onclick = async ()=>{
       const a = associacaoAtual(); a.diaristas = a.diaristas||[];
       const pid = el.dataset.assocMarcarDiarista;
+      if(pid===a.adminId) return;
       if(!a.diaristas.includes(pid)) a.diaristas.push(pid);
       ui.modal=null; ui.jogadorAcoesId=null;
       await saveData(); showToast('Agora é diarista.'); render();
@@ -3599,6 +3612,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-assoc-marcar-mensalista]').forEach(el=> el.onclick = async ()=>{
       const a = associacaoAtual();
       const pid = el.dataset.assocMarcarMensalista;
+      if(pid===a.adminId) return;
       a.diaristas = (a.diaristas||[]).filter(id=>id!==pid);
       ui.modal=null; ui.jogadorAcoesId=null;
       await saveData(); showToast('Agora é mensalista.'); render();
@@ -3606,6 +3620,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-assoc-expulsar]').forEach(el=> el.onclick = async ()=>{
       const a = associacaoAtual();
       const pid = el.dataset.assocExpulsar;
+      if(pid===a.adminId) return;
       const nome = (playerById(pid)||{}).name || 'Jogador';
       a.memberIds = a.memberIds.filter(id=>id!==pid);
       a.moderadores = (a.moderadores||[]).filter(id=>id!==pid);
