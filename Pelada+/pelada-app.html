@@ -2779,21 +2779,21 @@ function traduzErroAuth(e){
     if(sub==='emergencia') return renderConfigEmergencia();
     if(sub==='login') return renderConfigLogin();
     if(sub==='permissoes') return renderConfigPermissoes();
+    const temFut = data.groups.some(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
+    if(!temFut) return renderConfigPessoalHub();
     return renderFutAjustesRoot();
   }
   function renderFutAjustesRoot(){
     const fut = data.groups.find(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
     if(!fut){
-      return `
-        <h1 class="page-title">⚙️ Configurações</h1>
-        <div class="empty"><span class="ball">🏟️</span>Você ainda não tem um Fut nessa associação.</div>
-      `;
+      return renderConfigPessoalHub();
     }
     const cabecalho = !ui.futConfigSub ? `<h1 class="page-title">🏟️ ${fut.name}</h1><p class="lead">Ajustes do Fut</p>` : '';
     return cabecalho + renderGrupoTabConfig(fut);
   }
   function renderConfigPessoalHub(){
     const a = associacaoAtual();
+    const temFut = data.groups.some(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
     const items = [
       {key:'jogador', icon:'👤', label:'Dados do jogador'},
       {key:'pessoais', icon:'📋', label:'Dados pessoais'},
@@ -2802,8 +2802,9 @@ function traduzErroAuth(e){
       {key:'permissoes', icon:'🔔', label:'Permissões'},
     ];
     return `
-      <button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>
+      ${temFut ? `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` : ''}
       <h1 class="page-title">🙋 Meu perfil</h1>
+      ${!temFut ? `<div class="empty" style="padding:0 0 16px;text-align:left;"><span class="ball">🏟️</span>Você ainda não tem um Fut nessa associação.</div>` : ''}
       ${a ? `
       <div class="card tight row">
         <div><div style="font-size:13px;font-weight:700;">🏛️ ${a.name}</div><div class="meta">associação atual</div></div>
