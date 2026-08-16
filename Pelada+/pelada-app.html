@@ -1369,48 +1369,6 @@ function traduzErroAuth(e){
   }
 
   // ---------- JOGADORES (membros da associação) ----------
-  function renderAssocJogadores(){
-    const a = associacaoAtual();
-    if(!a) return `<div class="empty"><span class="ball">🏛️</span>Você ainda não está em nenhuma associação.</div>`;
-    a.moderadores = a.moderadores || [];
-    a.diaristas = a.diaristas || [];
-    a.memberSince = a.memberSince || {};
-    const souAdmin = a.adminId===me || a.moderadores.includes(me);
-    const busca = (ui.buscaJogadoresAssoc||'').toLowerCase();
-    const todos = a.memberIds.map(playerById).filter(Boolean).filter(pl=> !busca || pl.name.toLowerCase().includes(busca));
-    const donos = todos.filter(pl=>pl.id===a.adminId);
-    const admins = todos.filter(pl=>pl.id!==a.adminId && a.moderadores.includes(pl.id));
-    const restante = todos.filter(pl=>pl.id!==a.adminId && !a.moderadores.includes(pl.id));
-    const mensalistas = restante.filter(pl=> !a.diaristas.includes(pl.id));
-    const diaristas = restante.filter(pl=> a.diaristas.includes(pl.id));
-    const linha = (pl, papel) => {
-      const idade = calcAge(pl.nascimento);
-      const desde = a.memberSince[pl.id] ? fmtDateFull(a.memberSince[pl.id]) : '—';
-      const clicavel = souAdmin && pl.id!==me;
-      return `
-        <div class="list-row" ${clicavel?`data-abrir-jogador-acoes="${pl.id}" style="cursor:pointer;"`:''}>
-          <div style="flex:1;">
-            <div class="name">${pl.name}</div>
-            <div class="meta">${idade!==null?idade+' anos · ':''}membro desde ${desde}</div>
-          </div>
-          ${papel==='diarista' ? `<span class="badge badge-done">Diarista</span>` : ''}
-          ${clicavel ? `<div class="meta">›</div>` : ''}
-        </div>`;
-    };
-    return `
-      <h1 class="page-title">👤 Jogadores (${a.memberIds.length})</h1>
-      <p class="lead">Todos os membros de ${a.name}.${souAdmin ? ' Toque num jogador pra gerenciar.' : ''}</p>
-      <input id="assoc-busca-jogador" placeholder="Buscar por nome..." value="${ui.buscaJogadoresAssoc||''}" style="margin-bottom:14px;">
-      <div class="eyebrow">Dono</div>
-      <div class="card">${donos.length===0?`<p class="lead" style="margin:0;">—</p>`:donos.map(pl=>linha(pl,'dono')).join('')}</div>
-      <div class="eyebrow" style="margin-top:14px;">Administradores (${admins.length})</div>
-      <div class="card">${admins.length===0?`<p class="lead" style="margin:0;">Nenhum admin além do dono.</p>`:admins.map(pl=>linha(pl,'admin')).join('')}</div>
-      <div class="eyebrow" style="margin-top:14px;">Mensalistas (${mensalistas.length})</div>
-      <div class="card">${mensalistas.length===0?`<p class="lead" style="margin:0;">Nenhum mensalista.</p>`:mensalistas.map(pl=>linha(pl,'mensalista')).join('')}</div>
-      <div class="eyebrow" style="margin-top:14px;">Diaristas (${diaristas.length})</div>
-      <div class="card">${diaristas.length===0?`<p class="lead" style="margin:0;">Nenhum diarista.</p>`:diaristas.map(pl=>linha(pl,'diarista')).join('')}</div>
-    `;
-  }
   function renderModalJogadorAcoes(){
     const a = associacaoAtual();
     const pl = playerById(ui.jogadorAcoesId);
@@ -1547,10 +1505,14 @@ function traduzErroAuth(e){
     `;
   }
   function renderGrupoTabConfig(g){
+    if(ui.futConfigSub==='jogadores') return renderCfgJogadores(g);
     if(g.adminId!==me){
       return `
-        <div class="card"><p class="lead" style="margin:0;">Apenas o administrador do Fut pode alterar essas configurações.</p></div>
-        <button class="btn btn-danger btn-block" data-action="sair-grupo" data-gid="${g.id}">Sair do Fut</button>
+        <div class="card" data-open-cfg-fut="jogadores" style="cursor:pointer;">
+          <div class="row"><div class="name" style="flex:1;">👤 Jogadores</div><div class="meta">›</div></div>
+        </div>
+        <div class="card" style="margin-top:14px;"><p class="lead" style="margin:0;">Apenas o administrador do Fut pode alterar as demais configurações.</p></div>
+        <button class="btn btn-danger btn-block" style="margin-top:14px;" data-action="sair-grupo" data-gid="${g.id}">Sair do Fut</button>
       `;
     }
     const sub = ui.futConfigSub;
@@ -1761,43 +1723,46 @@ function traduzErroAuth(e){
     if(g.historico.length>200) g.historico.length = 200;
   }
   function renderCfgJogadores(g){
-    g.moderadores = g.moderadores || [];
-    g.diaristas = g.diaristas || [];
+    const a = associacaoAtual();
+    if(!a) return '';
+    a.moderadores = a.moderadores || [];
+    a.diaristas = a.diaristas || [];
+    a.memberSince = a.memberSince || {};
+    const souAdmin = a.adminId===me || a.moderadores.includes(me);
     const busca = (ui.buscaJogadoresFut||'').toLowerCase();
-    const todos = g.memberIds.map(playerById).filter(Boolean).filter(pl=> !busca || pl.name.toLowerCase().includes(busca));
-    const donos = todos.filter(pl=>pl.id===g.adminId);
-    const admins = todos.filter(pl=>pl.id!==g.adminId && g.moderadores.includes(pl.id));
-    const restante = todos.filter(pl=>pl.id!==g.adminId && !g.moderadores.includes(pl.id));
-    const mensalistas = restante.filter(pl=> !g.diaristas.includes(pl.id));
-    const diaristas = restante.filter(pl=> g.diaristas.includes(pl.id));
+    const todos = a.memberIds.map(playerById).filter(Boolean).filter(pl=> !busca || pl.name.toLowerCase().includes(busca));
+    const donos = todos.filter(pl=>pl.id===a.adminId);
+    const admins = todos.filter(pl=>pl.id!==a.adminId && a.moderadores.includes(pl.id));
+    const restante = todos.filter(pl=>pl.id!==a.adminId && !a.moderadores.includes(pl.id));
+    const mensalistas = restante.filter(pl=> !a.diaristas.includes(pl.id));
+    const diaristas = restante.filter(pl=> a.diaristas.includes(pl.id));
     const linha = (pl, papel) => {
       const idade = calcAge(pl.nascimento);
-      const desde = g.memberSince && g.memberSince[pl.id] ? fmtDateFull(g.memberSince[pl.id]) : '—';
+      const desde = a.memberSince[pl.id] ? fmtDateFull(a.memberSince[pl.id]) : '—';
+      const clicavel = souAdmin && pl.id!==me;
       return `
-        <div class="list-row">
+        <div class="list-row" ${clicavel?`data-abrir-jogador-acoes="${pl.id}" style="cursor:pointer;"`:''}>
           <div style="flex:1;">
             <div class="name">${pl.name}</div>
-            <div class="meta">${idade!==null?idade+' anos · ':''}sócio desde ${desde}</div>
+            <div class="meta">${idade!==null?idade+' anos · ':''}membro desde ${desde}</div>
           </div>
-          ${papel==='admin' ? `<button class="btn btn-sm btn-ghost" data-rebaixar-admin="${pl.id}" data-gid="${g.id}">Remover admin</button>` : ''}
-          ${papel==='mensalista' ? `
-            <button class="btn btn-sm btn-ghost" data-marcar-diarista="${pl.id}" data-gid="${g.id}">Marcar diarista</button>
-            <button class="btn btn-sm btn-ghost" data-promover-admin="${pl.id}" data-gid="${g.id}">Tornar admin</button>` : ''}
-          ${papel==='diarista' ? `<button class="btn btn-sm btn-ghost" data-marcar-mensalista="${pl.id}" data-gid="${g.id}">Marcar mensalista</button>` : ''}
+          ${papel==='diarista' ? `<span class="badge badge-done">Diarista</span>` : ''}
+          ${clicavel ? `<div class="meta">›</div>` : ''}
         </div>`;
     };
     return `
       ${cfgVoltarBtn()}
-      <h1 class="page-title">👥 Jogadores (${g.memberIds.length})</h1>
+      <h1 class="page-title">👥 Jogadores (${a.memberIds.length})</h1>
+      <p class="lead">Todos os membros de ${a.name}.${souAdmin ? ' Toque num jogador pra gerenciar.' : ''}</p>
       <input id="cfg-busca-jogador" placeholder="Buscar por nome..." value="${ui.buscaJogadoresFut||''}" style="margin-bottom:14px;">
       <div class="eyebrow">Dono</div>
       <div class="card">${donos.length===0?`<p class="lead" style="margin:0;">—</p>`:donos.map(pl=>linha(pl,'dono')).join('')}</div>
       <div class="eyebrow" style="margin-top:14px;">Administradores (${admins.length})</div>
       <div class="card">${admins.length===0?`<p class="lead" style="margin:0;">Nenhum admin além do dono.</p>`:admins.map(pl=>linha(pl,'admin')).join('')}</div>
       <div class="eyebrow" style="margin-top:14px;">Mensalistas (${mensalistas.length})</div>
-      <div class="card">${mensalistas.length===0?`<p class="lead" style="margin:0;">Nenhum sócio encontrado.</p>`:mensalistas.map(pl=>linha(pl,'mensalista')).join('')}</div>
+      <div class="card">${mensalistas.length===0?`<p class="lead" style="margin:0;">Nenhum mensalista.</p>`:mensalistas.map(pl=>linha(pl,'mensalista')).join('')}</div>
       <div class="eyebrow" style="margin-top:14px;">Diaristas (${diaristas.length})</div>
-      <div class="card">${diaristas.length===0?`<p class="lead" style="margin:0;">Nenhum diarista no momento.</p>`:diaristas.map(pl=>linha(pl,'diarista')).join('')}</div>
+      <div class="card">${diaristas.length===0?`<p class="lead" style="margin:0;">Nenhum diarista.</p>`:diaristas.map(pl=>linha(pl,'diarista')).join('')}</div>
     `;
   }
   function renderCfgHistorico(g){
@@ -2912,47 +2877,21 @@ function traduzErroAuth(e){
     if(sub==='emergencia') return renderConfigEmergencia();
     if(sub==='login') return renderConfigLogin();
     if(sub==='permissoes') return renderConfigPermissoes();
-    if(sub==='jogadores') return renderConfigJogadoresTab();
-    if(sub==='fut') return renderFutAjustesRoot();
-    return renderConfigRootHub();
-  }
-  function renderConfigRootHub(){
-    const a = associacaoAtual();
     const temFut = data.groups.some(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
-    return `
-      <h1 class="page-title">⚙️ Configurações</h1>
-      ${a ? `
-      <div class="card tight row">
-        <div><div style="font-size:13px;font-weight:700;">🏛️ ${a.name}</div><div class="meta">associação atual</div></div>
-        <button class="btn btn-ghost btn-sm" data-action="trocar-associacao">Trocar</button>
-      </div>` : ''}
-      <div class="card">
-        <div class="list-row" data-open-config="pessoal" style="cursor:pointer;">
-          <div class="name" style="flex:1;">🙋 Meu perfil</div><div class="meta">›</div>
-        </div>
-        <div class="list-row" data-open-config="jogadores" style="cursor:pointer;">
-          <div class="name" style="flex:1;">👤 Jogadores</div><div class="meta">›</div>
-        </div>
-        ${temFut ? `
-        <div class="list-row" data-open-config="fut" style="cursor:pointer;">
-          <div class="name" style="flex:1;">🏟️ Ajustes do Fut</div><div class="meta">›</div>
-        </div>` : ''}
-      </div>
-      <button class="btn btn-ghost btn-block" style="margin-top:16px;" data-action="logout">Sair</button>
-    `;
-  }
-  function renderConfigJogadoresTab(){
-    return `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` + renderAssocJogadores();
+    if(!temFut) return renderConfigPessoalHub();
+    return renderFutAjustesRoot();
   }
   function renderFutAjustesRoot(){
     const fut = data.groups.find(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
     if(!fut){
       return renderConfigPessoalHub();
     }
-    const cabecalho = !ui.futConfigSub ? `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button><h1 class="page-title">🏟️ ${fut.name}</h1><p class="lead">Ajustes do Fut</p>` : '';
+    const cabecalho = !ui.futConfigSub ? `<h1 class="page-title">🏟️ ${fut.name}</h1><p class="lead">Ajustes do Fut</p>` : '';
     return cabecalho + renderGrupoTabConfig(fut);
   }
   function renderConfigPessoalHub(){
+    const a = associacaoAtual();
+    const temFut = data.groups.some(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
     const items = [
       {key:'jogador', icon:'👤', label:'Dados do jogador'},
       {key:'pessoais', icon:'📋', label:'Dados pessoais'},
@@ -2961,8 +2900,14 @@ function traduzErroAuth(e){
       {key:'permissoes', icon:'🔔', label:'Permissões'},
     ];
     return `
-      <button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>
+      ${temFut ? `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` : ''}
       <h1 class="page-title">🙋 Meu perfil</h1>
+      ${!temFut ? `<div class="empty" style="padding:0 0 16px;text-align:left;"><span class="ball">🏟️</span>Você ainda não tem um Fut nessa associação.</div>` : ''}
+      ${a ? `
+      <div class="card tight row">
+        <div><div style="font-size:13px;font-weight:700;">🏛️ ${a.name}</div><div class="meta">associação atual</div></div>
+        <button class="btn btn-ghost btn-sm" data-action="trocar-associacao">Trocar</button>
+      </div>` : ''}
       <div class="card">
         <div class="list-row" data-open-config="desempenho" style="cursor:pointer;">
           <div class="name" style="flex:1;">📊 Performance</div><div class="meta">›</div>
