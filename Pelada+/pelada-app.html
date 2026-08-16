@@ -1862,6 +1862,10 @@ function traduzErroAuth(e){
     `;
   }
   function renderCfgHub(g, podeEditar){
+    const itensBase = [
+      {key:'jogadores', icon:'👥', label:'Jogadores'},
+      {key:'financeiro', icon:'💰', label:'Financeiro'},
+    ];
     const itens = [
       {key:'dados', icon:'📋', label:'Dados do Fut'},
       {key:'avaliacoes', icon:'⭐', label:'Avaliações'},
@@ -1875,7 +1879,11 @@ function traduzErroAuth(e){
       {key:'historico', icon:'🕓', label:'Histórico de atividades'},
     ];
     return `
-      <div class="card">
+      <div class="card" style="margin-top:14px;">
+        ${itensBase.map(it=>`
+          <div class="list-row" data-open-config="${it.key}" style="cursor:pointer;">
+            <div class="name" style="flex:1;">${it.icon} ${it.label}</div><div class="meta">›</div>
+          </div>`).join('')}
         ${itens.map(it=>`
           <div class="list-row" data-open-cfg-fut="${it.key}" style="cursor:pointer;">
             <div class="name" style="flex:1;">${it.icon} ${it.label}</div><div class="meta">›</div>
@@ -3201,13 +3209,15 @@ function traduzErroAuth(e){
   function renderConfigRoot(){
     const a = associacaoAtual();
     if(!a) return `<h1 class="page-title">⚙️ Configurações</h1><div class="empty"><span class="ball">🏛️</span>Você ainda não está em nenhuma associação.</div>`;
-    const fut = data.groups.find(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
+    const fut = data.groups.find(gr=>gr.associacaoId===associacaoId);
     const cabecalho = !ui.futConfigSub ? `
       <h1 class="page-title">⚙️ Configurações</h1>
       <div class="card tight row">
         <div><div style="font-size:13px;font-weight:700;">🏛️ ${a.name}</div><div class="meta">código ${a.code}</div></div>
         <button class="btn btn-ghost btn-sm" data-action="trocar-associacao">Trocar</button>
       </div>
+    ` : '';
+    if(!fut) return cabecalho + `
       <div class="card" style="margin-top:14px;">
         <div class="list-row" data-open-config="jogadores" style="cursor:pointer;">
           <div class="name" style="flex:1;">👥 Jogadores</div><div class="meta">›</div>
@@ -3216,9 +3226,8 @@ function traduzErroAuth(e){
           <div class="name" style="flex:1;">💰 Financeiro</div><div class="meta">›</div>
         </div>
       </div>
-      ${fut ? `<div class="eyebrow" style="margin-top:14px;">🏟️ Ajustes do Fut</div>` : ''}
-    ` : '';
-    return cabecalho + (fut ? renderGrupoTabConfig(fut) : '');
+    `;
+    return cabecalho + renderGrupoTabConfig(fut);
   }
   function renderConfigPessoalHub(){
     const items = [
