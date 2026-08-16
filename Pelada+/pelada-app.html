@@ -3153,10 +3153,8 @@ function traduzErroAuth(e){
     `;
   }
   function renderResenhaAniversariantes(){
-    const gids = myGroups().map(g=>g.id);
-    const ids = new Set();
-    gids.forEach(gid=> groupById(gid).memberIds.forEach(id=>ids.add(id)));
-    const players = [...ids].map(playerById).filter(Boolean).filter(p=>p.nascimento);
+    const a = associacaoAtual();
+    const players = (a ? a.memberIds : []).map(playerById).filter(Boolean).filter(p=>p.nascimento);
     const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const porMes = {}; meses.forEach(m=>porMes[m]=[]);
     players.forEach(p=>{
@@ -3202,50 +3200,83 @@ function traduzErroAuth(e){
     {key:'vitorias', icon:'🏆', label:'Vitórias'},
     {key:'defesaDificil', icon:'🧤', label:'Defesa difícil'},
   ];
-  function statsExtrasRanking(playerId, gids){
-    let amarelo=0, azul=0, vermelho=0, presenca=0, defesaDificil=0;
+  const RANKING_PERIODOS = [
+    {key:'mensal', label:'Mensal'},
+    {key:'semestral', label:'Semestral'},
+    {key:'anual', label:'Anual'},
+  ];
+  const MESES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  function periodoRankingRange(periodo){
+    const hoje = new Date();
+    const ano = hoje.getFullYear();
+    const mes = hoje.getMonth();
+    const pad = n=> String(n).padStart(2,'0');
+    if(periodo==='semestral'){
+      const primeiro = mes<6;
+      return primeiro
+        ? { di:`${ano}-01-01`, df:`${ano}-06-30`, label:`1º semestre de ${ano}` }
+        : { di:`${ano}-07-01`, df:`${ano}-12-31`, label:`2º semestre de ${ano}` };
+    }
+    if(periodo==='anual'){
+      return { di:`${ano}-01-01`, df:`${ano}-12-31`, label:`Ano de ${ano}` };
+    }
+    const ultimoDia = new Date(ano, mes+1, 0).getDate();
+    return { di:`${ano}-${pad(mes+1)}-01`, df:`${ano}-${pad(mes+1)}-${pad(ultimoDia)}`, label:`${MESES_ABREV[mes]}/${ano}` };
+  }
+  function statsRankingPeriodo(playerId, gids, di, df){
+    let gols=0, assistencias=0, jogos=0, vitorias=0, amarelo=0, azul=0, vermelho=0, presenca=0, defesaDificil=0;
     data.matches.forEach(m=>{
       if(!gids.includes(m.groupId)) return;
-      if(m.confirmed.includes(playerId)) presenca++;
-      if(m.status==='finalizada'){
+      if(m.date < di || m.date > df) return;
+      if(m.confirmed && m.confirmed.includes(playerId)) presenca++;
+      if(m.status==='finalizada' && m.times){
+        const timeA = jogadoresDoTime(m,'A'), timeB = jogadoresDoTime(m,'B');
+        if(!timeA.includes(playerId) && !timeB.includes(playerId)) return;
+        jogos++;
+        gols += (m.golsPorJogador[playerId]||0);
+        const sj = (m.statsJogo && m.statsJogo[playerId]) || {};
+        assistencias += sj.assistencia||0;
+        defesaDificil += sj.defesaDificil||0;
         const c = (m.cartoes && m.cartoes[playerId]) || {};
         amarelo += c.amarelo||0; azul += c.azul||0; vermelho += c.vermelho||0;
-        const sj = (m.statsJogo && m.statsJogo[playerId]) || {};
-        defesaDificil += sj.defesaDificil||0;
+        const vencedor = m.placar.A>m.placar.B ? 'A' : (m.placar.B>m.placar.A ? 'B' : 'empate');
+        const meuSlot = timeA.includes(playerId) ? 'A' : 'B';
+        if(vencedor===meuSlot) vitorias++;
       }
     });
-    return {amarelo, azul, vermelho, presenca, defesaDificil};
+    return { gols, assistencias, partidas:jogos, vitorias, amarelo, azul, vermelho, presenca, defesaDificil };
   }
-  function valorRanking(pl, mode, gids){
-    if(mode==='gols') return pl.stats.gols;
-    if(mode==='assistencias') return pl.stats.assistencias;
-    if(mode==='partidas') return pl.stats.jogos;
-    if(mode==='vitorias') return pl.stats.vitorias;
-    return statsExtrasRanking(pl.id, gids)[mode] || 0;
+  function valorRanking(pl, mode, gids, di, df){
+    return statsRankingPeriodo(pl.id, gids, di, df)[mode] || 0;
   }
   function renderRanking(){
-    const gids = myGroups().map(g=>g.id);
-    const ids = new Set();
-    gids.forEach(gid=> groupById(gid).memberIds.forEach(id=>ids.add(id)));
-    let players = [...ids].map(playerById).filter(Boolean);
+    const a = associacaoAtual();
+    const gids = data.groups.filter(g=>g.associacaoId===associacaoId).map(g=>g.id);
+    let players = (a ? a.memberIds : []).map(playerById).filter(Boolean);
     let mode = ui.rankMode || 'gols';
-    players.sort((a,b)=> valorRanking(b,mode,gids) - valorRanking(a,mode,gids));
+    let periodo = ui.rankPeriodo || 'mensal';
+    const range = periodoRankingRange(periodo);
+    players.sort((x,y)=> valorRanking(y,mode,gids,range.di,range.df) - valorRanking(x,mode,gids,range.di,range.df));
     const modoAtual = RANKING_MODOS.find(m=>m.key===mode);
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-resenha" style="margin-bottom:14px;">← Resenha</button>
       <h1 class="page-title">🏆 Ranking</h1>
+      <div class="fin-tabs" style="margin-bottom:10px;">
+        ${RANKING_PERIODOS.map(p=>`<div class="fin-tab ${periodo===p.key?'active':''}" data-rank-periodo="${p.key}">${p.label}</div>`).join('')}
+      </div>
+      <p class="lead" style="margin:-6px 0 12px;">${range.label}</p>
       <select id="rank-modo-select" style="margin-bottom:14px;">
         ${RANKING_MODOS.map(m=>`<option value="${m.key}" ${mode===m.key?'selected':''}>${m.icon} ${m.label}</option>`).join('')}
       </select>
-      ${players.length===0 ? `<div class="empty">Entre em um Fut para ver o ranking.</div>` :
+      ${players.length===0 ? `<div class="empty">Entre em uma associação para ver o ranking.</div>` :
         `<div class="card">
           ${players.map((pl,i)=>`
             <div class="list-row">
               <div class="rank-num ${i===0?'g1':''}">${i+1}º</div>
-              <div class="jersey">${valorRanking(pl,mode,gids)}</div>
+              <div class="jersey">${valorRanking(pl,mode,gids,range.di,range.df)}</div>
               <div style="flex:1;">
                 <div class="name">${pl.name} ${pl.id===me?'(você)':''}</div>
-                <div class="meta">${posicaoPrincipalPara(pl, associacaoAtual()?associacaoAtual().campoTipo:'Campo')} · ${modoAtual.icon} ${valorRanking(pl,mode,gids)} ${modoAtual.label.toLowerCase()}</div>
+                <div class="meta">${posicaoPrincipalPara(pl, a?a.campoTipo:'Campo')} · ${modoAtual.icon} ${valorRanking(pl,mode,gids,range.di,range.df)} ${modoAtual.label.toLowerCase()}</div>
               </div>
             </div>`).join('')}
         </div>`}
@@ -3624,6 +3655,7 @@ function traduzErroAuth(e){
     });
     const rankModoSelect = document.getElementById('rank-modo-select');
     if(rankModoSelect) rankModoSelect.onchange = e=>{ ui.rankMode = e.target.value; render(); };
+    document.querySelectorAll('[data-rank-periodo]').forEach(el=> el.onclick = ()=>{ ui.rankPeriodo = el.dataset.rankPeriodo; render(); });
     document.querySelectorAll('[data-resenha-card]').forEach(el=> el.onclick = ()=>{
       const key = el.dataset.resenhaCard;
       if(key==='ranking'){ view='ranking'; } else { ui.resenhaSub = key; }
