@@ -1525,33 +1525,26 @@ function traduzErroAuth(e){
     `;
   }
   function renderGrupoTabConfig(g){
-    if(ui.futConfigSub==='jogadores') return renderCfgJogadores(g);
-    if(g.adminId!==me){
-      return `
-        <div class="card" data-open-cfg-fut="jogadores" style="cursor:pointer;">
-          <div class="row"><div class="name" style="flex:1;">👤 Jogadores</div><div class="meta">›</div></div>
-        </div>
-        <div class="card" style="margin-top:14px;"><p class="lead" style="margin:0;">Apenas o administrador do Fut pode alterar as demais configurações.</p></div>
-        <button class="btn btn-danger btn-block" style="margin-top:14px;" data-action="sair-grupo" data-gid="${g.id}">Sair do Fut</button>
-      `;
-    }
+    const podeEditar = souAdminAssoc();
     const sub = ui.futConfigSub;
-    if(sub==='dados') return renderCfgDadosGrupo(g);
-    if(sub==='avaliacoes') return renderCfgAvaliacoes(g);
-    if(sub==='horario') return renderCfgHorario(g);
-    if(sub==='local') return renderCfgLocal(g);
-    if(sub==='notificacoes') return renderCfgNotificacoes(g);
-    if(sub==='ranking') return renderCfgRanking(g);
-    if(sub==='sorteio') return renderCfgSorteio(g);
-    if(sub==='classificar') return renderCfgClassificar(g);
-    if(sub==='fila') return renderCfgFila(g);
-    if(sub==='jogadores') return renderCfgJogadores(g);
+    if(sub==='classificar'){
+      if(!podeEditar) return `<div class="empty"><span class="ball">🔒</span>Apenas admin e dono podem ver esta seção.</div>`;
+      return renderCfgClassificar(g);
+    }
+    if(sub==='dados') return renderCfgDadosGrupo(g, podeEditar);
+    if(sub==='avaliacoes') return renderCfgAvaliacoes(g, podeEditar);
+    if(sub==='horario') return renderCfgHorario(g, podeEditar);
+    if(sub==='local') return renderCfgLocal(g, podeEditar);
+    if(sub==='notificacoes') return renderCfgNotificacoes(g, podeEditar);
+    if(sub==='ranking') return renderCfgRanking(g, podeEditar);
+    if(sub==='sorteio') return renderCfgSorteio(g, podeEditar);
+    if(sub==='fila') return renderCfgFila(g, podeEditar);
     if(sub==='historico') return renderCfgHistorico(g);
-    if(sub==='formacao') return renderCfgFormacao(g);
-    return renderCfgHub(g);
+    if(sub==='formacao') return renderCfgFormacao(g, podeEditar);
+    return renderCfgHub(g, podeEditar);
   }
   function cfgVoltarBtn(){ return `<button class="btn btn-ghost btn-sm" data-action="voltar-cfg-fut" style="margin-bottom:14px;">← Configurações</button>`; }
-  function renderCfgDadosGrupo(g){
+  function renderCfgDadosGrupo(g, podeEditar){
     if(!ui.draftCfgGrupo || ui.draftCfgGrupo.id!==g.id){
       ui.draftCfgGrupo = { id:g.id, name:g.name, tipo:g.tipo, maxPlayers:g.maxPlayers, valor:g.valor };
     }
@@ -1560,15 +1553,15 @@ function traduzErroAuth(e){
       ${cfgVoltarBtn()}
       <h1 class="page-title">📋 Dados do Fut</h1>
       <div class="card">
-        <label>Nome do Fut</label><input id="cfg-name" value="${d.name}">
-        <label>Tipo</label><div class="chip-row">${TIPOS.map(t=>`<div class="chip ${d.tipo===t?'active':''}" data-cfg-tipo="${t}">${t}</div>`).join('')}</div>
-        <label>Máximo de jogadores padrão</label><input id="cfg-max" type="number" value="${d.maxPlayers}">
-        <label>Valor padrão (R$)</label><input id="cfg-valor" type="number" value="${d.valor}">
-        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-grupo" data-gid="${g.id}">Salvar</button>
+        <label>Nome do Fut</label><input id="cfg-name" value="${d.name}" ${podeEditar?'':'disabled'}>
+        <label>Tipo</label><div class="chip-row">${TIPOS.map(t=>`<div class="chip ${d.tipo===t?'active':''}" ${podeEditar?`data-cfg-tipo="${t}" style="cursor:pointer;"`:''}>${t}</div>`).join('')}</div>
+        <label>Máximo de jogadores padrão</label><input id="cfg-max" type="number" value="${d.maxPlayers}" ${podeEditar?'':'disabled'}>
+        <label>Valor padrão (R$)</label><input id="cfg-valor" type="number" value="${d.valor}" ${podeEditar?'':'disabled'}>
+        ${podeEditar ? `<button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-grupo" data-gid="${g.id}">Salvar</button>` : ''}
       </div>
     `;
   }
-  function renderCfgAvaliacoes(g){
+  function renderCfgAvaliacoes(g, podeEditar){
     if(!ui.draftCfgAval || ui.draftCfgAval.id!==g.id){
       ui.draftCfgAval = { id:g.id, prazoAvaliacaoHoras: g.prazoAvaliacaoHoras!=null?g.prazoAvaliacaoHoras:24 };
     }
@@ -1579,23 +1572,23 @@ function traduzErroAuth(e){
       <p class="lead">Quanto tempo após o fim da pelada os jogadores têm pra dar suas notas?</p>
       <div class="card">
         <div class="row"><div class="meta">2h</div><div class="meta">23h</div></div>
-        <input type="range" min="2" max="23" id="cfg-prazo-aval" value="${d.prazoAvaliacaoHoras}">
+        <input type="range" min="2" max="23" id="cfg-prazo-aval" value="${d.prazoAvaliacaoHoras}" ${podeEditar?'':'disabled'}>
         <div style="text-align:center;margin-top:6px;">
           <span class="display" style="font-size:24px;color:var(--gold);" id="cfg-prazo-aval-label">${d.prazoAvaliacaoHoras} horas</span>
         </div>
       </div>
       <div class="stack" style="gap:8px;">
         ${SUGESTOES_PRAZO.map(s=>`
-          <div class="card tight" data-prazo-sugestao-cfg="${s.horas}" style="cursor:pointer;${d.prazoAvaliacaoHoras===s.horas?'border-color:var(--gold);':''}">
+          <div class="card tight" ${podeEditar?`data-prazo-sugestao-cfg="${s.horas}" style="cursor:pointer;${d.prazoAvaliacaoHoras===s.horas?'border-color:var(--gold);':''}"`:`style="${d.prazoAvaliacaoHoras===s.horas?'border-color:var(--gold);':''}"`}>
             <div style="font-weight:800;">${s.icon} ${s.nome} <span class="badge badge-open">${s.horas}h</span></div>
             <div class="meta">${s.desc}</div>
           </div>
         `).join('')}
       </div>
-      <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-avaliacoes" data-gid="${g.id}">Salvar</button>
+      ${podeEditar ? `<button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-avaliacoes" data-gid="${g.id}">Salvar</button>` : ''}
     `;
   }
-  function renderCfgHorario(g){
+  function renderCfgHorario(g, podeEditar){
     if(!ui.draftCfgHorario || ui.draftCfgHorario.id!==g.id){
       ui.draftCfgHorario = { id:g.id, diaPadrao:g.diaPadrao, horarioPadrao:g.horarioPadrao };
     }
@@ -1605,13 +1598,13 @@ function traduzErroAuth(e){
       <h1 class="page-title">⏰ Horário dos jogos</h1>
       <div class="card">
         <label>Dia padrão</label>
-        <div class="chip-row">${DIAS_SEMANA.map(dia=>`<div class="chip ${d.diaPadrao===dia?'active':''}" data-cfg-dia="${dia}">${dia}</div>`).join('')}</div>
-        <label>Horário padrão</label><input id="cfg-horario" type="time" value="${d.horarioPadrao}">
-        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-horario" data-gid="${g.id}">Salvar</button>
+        <div class="chip-row">${DIAS_SEMANA.map(dia=>`<div class="chip ${d.diaPadrao===dia?'active':''}" ${podeEditar?`data-cfg-dia="${dia}" style="cursor:pointer;"`:''}>${dia}</div>`).join('')}</div>
+        <label>Horário padrão</label><input id="cfg-horario" type="time" value="${d.horarioPadrao}" ${podeEditar?'':'disabled'}>
+        ${podeEditar ? `<button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-horario" data-gid="${g.id}">Salvar</button>` : ''}
       </div>
     `;
   }
-  function renderCfgLocal(g){
+  function renderCfgLocal(g, podeEditar){
     if(!ui.draftCfgLocal || ui.draftCfgLocal.id!==g.id){
       ui.draftCfgLocal = { id:g.id, local:g.local };
     }
@@ -1621,13 +1614,13 @@ function traduzErroAuth(e){
       <h1 class="page-title">📍 Local dos jogos</h1>
       <div class="card">
         <label>Endereço</label>
-        <input id="cfg-local" value="${d.local}" autocomplete="off">
-        <div id="cfg-local-sugestoes" class="addr-box"></div>
-        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-local" data-gid="${g.id}">Salvar</button>
+        <input id="cfg-local" value="${d.local}" autocomplete="off" ${podeEditar?'':'disabled'}>
+        ${podeEditar ? `<div id="cfg-local-sugestoes" class="addr-box"></div>` : ''}
+        ${podeEditar ? `<button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-local" data-gid="${g.id}">Salvar</button>` : ''}
       </div>
     `;
   }
-  function renderCfgNotificacoes(g){
+  function renderCfgNotificacoes(g, podeEditar){
     g.notificacoes = g.notificacoes || {confirmacoes:true, resultados:true, financeiro:true};
     const itens = [
       {key:'confirmacoes', label:'Confirmações de presença', desc:'Avisa quando alguém confirma ou sai da lista.'},
@@ -1641,7 +1634,9 @@ function traduzErroAuth(e){
         ${itens.map(it=>`
           <div class="list-row">
             <div style="flex:1;"><div class="name">${it.label}</div><div class="meta">${it.desc}</div></div>
-            <button class="btn btn-sm ${g.notificacoes[it.key]?'btn-gold':'btn-ghost'}" data-toggle-notif-fut="${it.key}" data-gid="${g.id}">${g.notificacoes[it.key]?'Ativado':'Desativado'}</button>
+            ${podeEditar
+              ? `<button class="btn btn-sm ${g.notificacoes[it.key]?'btn-gold':'btn-ghost'}" data-toggle-notif-fut="${it.key}" data-gid="${g.id}">${g.notificacoes[it.key]?'Ativado':'Desativado'}</button>`
+              : `<span class="badge ${g.notificacoes[it.key]?'badge-done':'badge-open'}">${g.notificacoes[it.key]?'Ativado':'Desativado'}</span>`}
           </div>`).join('')}
       </div>
     `;
@@ -1652,7 +1647,7 @@ function traduzErroAuth(e){
     {key:'paredao', icon:'🧤', label:'Paredão'}, {key:'bolaMurcha', icon:'😅', label:'Bola Murcha'},
     {key:'pereba', icon:'📉', label:'Pereba'},
   ];
-  function renderCfgRanking(g){
+  function renderCfgRanking(g, podeEditar){
     g.rankingHabilitados = g.rankingHabilitados || Object.fromEntries(RANKING_CATEGORIAS.map(c=>[c.key,true]));
     return `
       ${cfgVoltarBtn()}
@@ -1662,37 +1657,37 @@ function traduzErroAuth(e){
         ${RANKING_CATEGORIAS.map(c=>`
           <div class="list-row">
             <div style="flex:1;" class="name">${c.icon} ${c.label}</div>
-            <button class="btn btn-sm ${g.rankingHabilitados[c.key]?'btn-gold':'btn-ghost'}" data-toggle-rank-fut="${c.key}" data-gid="${g.id}">${g.rankingHabilitados[c.key]?'Ativado':'Desativado'}</button>
+            ${podeEditar
+              ? `<button class="btn btn-sm ${g.rankingHabilitados[c.key]?'btn-gold':'btn-ghost'}" data-toggle-rank-fut="${c.key}" data-gid="${g.id}">${g.rankingHabilitados[c.key]?'Ativado':'Desativado'}</button>`
+              : `<span class="badge ${g.rankingHabilitados[c.key]?'badge-done':'badge-open'}">${g.rankingHabilitados[c.key]?'Ativado':'Desativado'}</span>`}
           </div>`).join('')}
       </div>
     `;
   }
-  function renderCfgSorteio(g){
+  function renderCfgSorteio(g, podeEditar){
     if(!ui.draftCfgSorteio || ui.draftCfgSorteio.id!==g.id){
       ui.draftCfgSorteio = { id:g.id, apenasAdmin: g.sorteioApenasAdmin!==false, sortearAntes: !!g.sortearAntesDoJogo, contestacao: !!g.permitirContestacao };
     }
     const d = ui.draftCfgSorteio;
+    const toggle = (key, val, label, desc) => `
+      <div class="list-row">
+        <div style="flex:1;"><div class="name">${label}</div>${desc?`<div class="meta">${desc}</div>`:''}</div>
+        ${podeEditar
+          ? `<button class="btn btn-sm ${val?'btn-gold':'btn-ghost'}" data-cfg-sorteio-toggle="${key}">${val?'Ativado':'Desativado'}</button>`
+          : `<span class="badge ${val?'badge-done':'badge-open'}">${val?'Ativado':'Desativado'}</span>`}
+      </div>`;
     return `
       ${cfgVoltarBtn()}
       <h1 class="page-title">⚖️ Sorteio</h1>
       <div class="card">
-        <div class="list-row">
-          <div style="flex:1;"><div class="name">Apenas admins podem sortear</div></div>
-          <button class="btn btn-sm ${d.apenasAdmin?'btn-gold':'btn-ghost'}" data-cfg-sorteio-toggle="apenasAdmin">${d.apenasAdmin?'Ativado':'Desativado'}</button>
-        </div>
-        <div class="list-row">
-          <div style="flex:1;"><div class="name">Sortear antes do jogo</div><div class="meta">Não exige marcar chegada — usa direto quem confirmou presença.</div></div>
-          <button class="btn btn-sm ${d.sortearAntes?'btn-gold':'btn-ghost'}" data-cfg-sorteio-toggle="sortearAntes">${d.sortearAntes?'Ativado':'Desativado'}</button>
-        </div>
-        <div class="list-row">
-          <div style="flex:1;"><div class="name">Permitir contestação de estatísticas</div><div class="meta">Jogador pode contestar durante o Mercado de Notas; admin aprova ou rejeita.</div></div>
-          <button class="btn btn-sm ${d.contestacao?'btn-gold':'btn-ghost'}" data-cfg-sorteio-toggle="contestacao">${d.contestacao?'Ativado':'Desativado'}</button>
-        </div>
-        <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="salvar-config-sorteio" data-gid="${g.id}">Salvar</button>
+        ${toggle('apenasAdmin', d.apenasAdmin, 'Apenas admins podem sortear')}
+        ${toggle('sortearAntes', d.sortearAntes, 'Sortear antes do jogo', 'Não exige marcar chegada — usa direto quem confirmou presença.')}
+        ${toggle('contestacao', d.contestacao, 'Permitir contestação de estatísticas', 'Jogador pode contestar durante o Mercado de Notas; admin aprova ou rejeita.')}
+        ${podeEditar ? `<button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="salvar-config-sorteio" data-gid="${g.id}">Salvar</button>` : ''}
       </div>
     `;
   }
-  function renderCfgFila(g){
+  function renderCfgFila(g, podeEditar){
     if(!ui.draftCfgFila || ui.draftCfgFila.id!==g.id){
       ui.draftCfgFila = { id:g.id, diaLimite: g.filaDiaLimite||g.diaPadrao, horaLimite: g.filaHoraLimite||g.horarioPadrao, maxJogadores: g.filaMaxJogadores||g.maxPlayers, maxGoleiros: g.filaMaxGoleiros!=null?g.filaMaxGoleiros:4 };
     }
@@ -1703,11 +1698,11 @@ function traduzErroAuth(e){
       <p class="lead">Define o padrão usado sempre que você marcar um novo Fut — ainda dá pra ajustar em cada partida.</p>
       <div class="card">
         <label>Dia limite para confirmação</label>
-        <div class="chip-row">${DIAS_SEMANA.map(dia=>`<div class="chip ${d.diaLimite===dia?'active':''}" data-cfg-fila-dia="${dia}">${dia}</div>`).join('')}</div>
-        <label>Hora limite para confirmação</label><input id="cfg-fila-hora" type="time" value="${d.horaLimite}">
-        <label>Máximo de jogadores por jogo</label><input id="cfg-fila-max" type="number" value="${d.maxJogadores}">
-        <label>Máximo de goleiros por jogo</label><input id="cfg-fila-golmax" type="number" value="${d.maxGoleiros}">
-        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-fila" data-gid="${g.id}">Salvar</button>
+        <div class="chip-row">${DIAS_SEMANA.map(dia=>`<div class="chip ${d.diaLimite===dia?'active':''}" ${podeEditar?`data-cfg-fila-dia="${dia}" style="cursor:pointer;"`:''}>${dia}</div>`).join('')}</div>
+        <label>Hora limite para confirmação</label><input id="cfg-fila-hora" type="time" value="${d.horaLimite}" ${podeEditar?'':'disabled'}>
+        <label>Máximo de jogadores por jogo</label><input id="cfg-fila-max" type="number" value="${d.maxJogadores}" ${podeEditar?'':'disabled'}>
+        <label>Máximo de goleiros por jogo</label><input id="cfg-fila-golmax" type="number" value="${d.maxGoleiros}" ${podeEditar?'':'disabled'}>
+        ${podeEditar ? `<button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-config-fila" data-gid="${g.id}">Salvar</button>` : ''}
       </div>
     `;
   }
@@ -1742,7 +1737,6 @@ function traduzErroAuth(e){
     g.historico.unshift({ ts: new Date().toISOString(), autor: me, texto });
     if(g.historico.length>200) g.historico.length = 200;
   }
-  function renderCfgJogadores(g){ return cfgVoltarBtn() + renderJogadoresBody(); }
   function renderConfigJogadoresRoot(){
     return `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` + renderJogadoresBody();
   }
@@ -1817,7 +1811,7 @@ function traduzErroAuth(e){
         </div>`}
     `;
   }
-  function renderCfgFormacao(g){
+  function renderCfgFormacao(g, podeEditar){
     const a = associacaoAtual();
     const tipo = a ? a.campoTipo : 'Campo';
     const n = (a && a.jogadoresLinha) || 7;
@@ -1836,20 +1830,17 @@ function traduzErroAuth(e){
         ${posicoesLinha.map(pos=>`
           <div class="list-row">
             <div class="name" style="flex:1;">${pos}</div>
-            <button class="btn btn-sm btn-ghost" data-formacao-dec="${pos}">–</button>
+            ${podeEditar ? `<button class="btn btn-sm btn-ghost" data-formacao-dec="${pos}">–</button>` : ''}
             <div style="width:34px;text-align:center;font-weight:800;">${d.counts[pos]||0}</div>
-            <button class="btn btn-sm btn-ghost" data-formacao-inc="${pos}">+</button>
+            ${podeEditar ? `<button class="btn btn-sm btn-ghost" data-formacao-inc="${pos}">+</button>` : ''}
           </div>`).join('')}
       </div>
+      ${podeEditar ? `
       <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="salvar-config-formacao" data-gid="${g.id}" ${total!==n?'disabled style="opacity:.5"':''}>Salvar</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:8px;" data-action="resetar-formacao" data-gid="${g.id}">Usar distribuição automática</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px;" data-action="resetar-formacao" data-gid="${g.id}">Usar distribuição automática</button>` : ''}
     `;
   }
-  function renderCfgHub(g){
-    const pessoas = [
-      {key:'jogadores', icon:'👥', label:'Jogadores'},
-      {key:'historico', icon:'🕓', label:'Histórico de atividades'},
-    ];
+  function renderCfgHub(g, podeEditar){
     const itens = [
       {key:'dados', icon:'📋', label:'Dados do Fut'},
       {key:'avaliacoes', icon:'⭐', label:'Avaliações'},
@@ -1859,22 +1850,19 @@ function traduzErroAuth(e){
       {key:'formacao', icon:'🧩', label:'Configurar Formação'},
       {key:'ranking', icon:'📊', label:'Ranking e Destaques'},
       {key:'sorteio', icon:'⚖️', label:'Sorteio'},
-      {key:'classificar', icon:'🌟', label:'Classificar jogadores'},
       {key:'fila', icon:'⏳', label:'Fila de espera'},
+      {key:'historico', icon:'🕓', label:'Histórico de atividades'},
     ];
     return `
-      <div class="card">
-        ${pessoas.map(it=>`
-          <div class="list-row" data-open-cfg-fut="${it.key}" style="cursor:pointer;">
-            <div class="name" style="flex:1;">${it.icon} ${it.label}</div><div class="meta">›</div>
-          </div>`).join('')}
-      </div>
-      <div class="eyebrow" style="margin-top:14px;">Configurações</div>
       <div class="card">
         ${itens.map(it=>`
           <div class="list-row" data-open-cfg-fut="${it.key}" style="cursor:pointer;">
             <div class="name" style="flex:1;">${it.icon} ${it.label}</div><div class="meta">›</div>
           </div>`).join('')}
+        ${podeEditar ? `
+        <div class="list-row" data-open-cfg-fut="classificar" style="cursor:pointer;">
+          <div class="name" style="flex:1;">🌟 Classificar jogadores</div><div class="meta">›</div>
+        </div>` : ''}
       </div>
       <button class="btn btn-danger btn-block" style="margin-top:16px;" data-action="sair-grupo" data-gid="${g.id}">Sair do Fut</button>
     `;
@@ -2902,15 +2890,14 @@ function traduzErroAuth(e){
     if(sub==='login') return renderConfigLogin();
     if(sub==='permissoes') return renderConfigPermissoes();
     if(sub==='jogadores') return renderConfigJogadoresRoot();
-    if(sub==='fut') return renderFutAjustesRoot();
     return renderConfigRoot();
   }
   function renderConfigRoot(){
     const a = associacaoAtual();
-    const temFut = data.groups.some(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
-    return `
+    if(!a) return `<h1 class="page-title">⚙️ Configurações</h1><div class="empty"><span class="ball">🏛️</span>Você ainda não está em nenhuma associação.</div>`;
+    const fut = data.groups.find(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
+    const cabecalho = !ui.futConfigSub ? `
       <h1 class="page-title">⚙️ Configurações</h1>
-      ${a ? `
       <div class="card tight row">
         <div><div style="font-size:13px;font-weight:700;">🏛️ ${a.name}</div><div class="meta">código ${a.code}</div></div>
         <button class="btn btn-ghost btn-sm" data-action="trocar-associacao">Trocar</button>
@@ -2919,22 +2906,10 @@ function traduzErroAuth(e){
         <div class="list-row" data-open-config="jogadores" style="cursor:pointer;">
           <div class="name" style="flex:1;">👥 Jogadores</div><div class="meta">›</div>
         </div>
-        ${temFut ? `
-        <div class="list-row" data-open-config="fut" style="cursor:pointer;">
-          <div class="name" style="flex:1;">🏟️ Ajustes do Fut</div><div class="meta">›</div>
-        </div>` : ''}
-      </div>` : `<div class="empty"><span class="ball">🏛️</span>Você ainda não está em nenhuma associação.</div>`}
-    `;
-  }
-  function renderFutAjustesRoot(){
-    const fut = data.groups.find(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
-    if(!fut){
-      return renderConfigRoot();
-    }
-    const cabecalho = !ui.futConfigSub
-      ? `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button><h1 class="page-title">🏟️ ${fut.name}</h1><p class="lead">Ajustes do Fut</p>`
-      : '';
-    return cabecalho + renderGrupoTabConfig(fut);
+      </div>
+      ${fut ? `<div class="eyebrow" style="margin-top:14px;">🏟️ Ajustes do Fut</div>` : ''}
+    ` : '';
+    return cabecalho + (fut ? renderGrupoTabConfig(fut) : '');
   }
   function renderConfigPessoalHub(){
     const items = [
