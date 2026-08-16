@@ -1945,6 +1945,7 @@ function traduzErroAuth(e){
     a.cartoesQuitados = a.cartoesQuitados || {};
     const registro = (a.pagamentosMensalidade[mesKey] || {})[pid];
     const pago = !!(registro && registro.pago);
+    const valorPago = (registro && registro.valorPago) || 0;
     const stats = statsForAssociacao(pid, associacaoId);
     const quitado = a.cartoesQuitados[pid] || {amarelo:0, vermelho:0, azul:0};
     const itens = [];
@@ -1958,8 +1959,12 @@ function traduzErroAuth(e){
     if(amareloDevido && a.multaCartaoAmarelo) itens.push({label:`🟨 Cartão amarelo ×${amareloDevido}`, valor: amareloDevido*a.multaCartaoAmarelo});
     if(vermelhoDevido && a.multaCartaoVermelho) itens.push({label:`🟥 Cartão vermelho ×${vermelhoDevido}`, valor: vermelhoDevido*a.multaCartaoVermelho});
     if(azulDevido && a.multaCartaoAzul) itens.push({label:`🟦 Cartão azul ×${azulDevido}`, valor: azulDevido*a.multaCartaoAzul});
-    const total = itens.reduce((s,i)=>s+i.valor,0);
-    return { itens, total, stats, pago };
+    const totalBruto = itens.reduce((s,i)=>s+i.valor,0);
+    const total = Math.max(0, totalBruto - (pago?0:valorPago));
+    if(!pago && valorPago>0){
+      itens.push({label:'Pago parcialmente', valor: -Math.min(valorPago, totalBruto)});
+    }
+    return { itens, total, totalBruto, valorPago, stats, pago };
   }
   function renderFinanceiro(){
     const a = associacaoAtual();
@@ -2052,7 +2057,7 @@ function traduzErroAuth(e){
         </div>
         ${itensSaldo.length>0 ? `
           <div class="divider-field"></div>
-          ${itensSaldo.map(it=>`<div class="list-row"><div class="name">${it.label}</div><div class="meta" style="color:#e8917a;">+R$ ${it.valor.toFixed(2)}</div></div>`).join('')}
+          ${itensSaldo.map(it=>`<div class="list-row"><div class="name">${it.label}</div><div class="meta" style="color:${it.valor>=0?'#e8917a':'#6fe3b4'};">${it.valor>=0?'+':'-'}R$ ${Math.abs(it.valor).toFixed(2)}</div></div>`).join('')}
         ` : `<p class="lead" style="margin:10px 0 0;">Nenhuma pendência. Tudo em dia! ⚽</p>`}
       </div>
 
@@ -2218,10 +2223,9 @@ function traduzErroAuth(e){
         <div class="fin-kpi"><div class="fin-kpi-icon">🔕</div><div class="fin-kpi-label">Não pagaram</div><div class="fin-kpi-value">${naoPagaram}</div></div>
         <div class="fin-kpi"><div class="fin-kpi-icon">👥</div><div class="fin-kpi-label">Qtd de mensalistas</div><div class="fin-kpi-value">${membros.length}</div></div>
       </div>
+      ${podeEditar ? `
       <div class="card" style="margin-top:12px;">
-        <div class="list-row"><div class="name">Dia do vencimento</div><div class="meta">${a.mensalidadeVencimento||'—'}</div></div>
-        <div class="list-row"><div class="name">Chave PIX</div><div class="meta" style="max-width:180px;text-align:right;word-break:break-all;">${a.chavePix||'—'}</div></div>
-        ${podeEditar ? `<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="editar-fin-config">${editando?'Cancelar':'✏️ Editar valores'}</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="editar-fin-config">${editando?'Cancelar':'✏️ Editar valores'}</button>
         ${editando ? `
           <div class="divider-field"></div>
           <label>Chave PIX</label><input id="fc-pix" value="${ui.draftFinConfig.chavePix}">
@@ -2231,7 +2235,7 @@ function traduzErroAuth(e){
           <label>Dia do vencimento</label><input id="fc-venc" type="number" min="1" max="28" value="${ui.draftFinConfig.mensalidadeVencimento}">
           <button class="btn btn-gold btn-block" style="margin-top:10px;" data-action="salvar-fin-config">Salvar</button>
         ` : ''}
-      </div>
+      </div>` : ''}
       ${podeEditar ? `
       <div class="card" style="margin-top:12px;">
         <div class="list-row">
@@ -4018,7 +4022,7 @@ function traduzErroAuth(e){
       const mesKey = mesAtualKey();
       a.pagamentosMensalidade = a.pagamentosMensalidade || {};
       a.pagamentosMensalidade[mesKey] = a.pagamentosMensalidade[mesKey] || {};
-      a.pagamentosMensalidade[mesKey][pid] = { pago:false, data:null };
+      a.pagamentosMensalidade[mesKey][pid] = { pago:false, data:null, valorPago:0 };
       a.transacoes = (a.transacoes||[]).filter(t=> !(t.jogadorId===pid && finMesKey(t.data)===mesKey && t.natureza==='recebimento'));
       await saveData(); showToast('Marcado em atraso.'); render();
     });
@@ -4038,12 +4042,18 @@ function traduzErroAuth(e){
         const pid = ui.finBaixaJogadorId;
         const mesKey = mesAtualKey();
         const valor = parseFloat(d.valor)||0;
+        const saldoAntes = calcularSaldoJogador(pid, a, mesKey).total;
         a.transacoes.push({ id: uid(), natureza:'recebimento', categoria:'Mensalidade', valor,
           descricao: d.descricao || mesLabel(mesKey), data: d.data, jogadorId: pid, criadoPor: me, criadoEm: new Date().toISOString() });
         a.pagamentosMensalidade[mesKey] = a.pagamentosMensalidade[mesKey] || {};
-        a.pagamentosMensalidade[mesKey][pid] = { pago:true, data: d.data };
+        const registroAtual = a.pagamentosMensalidade[mesKey][pid] || { valorPago:0 };
+        const novoValorPago = (registroAtual.valorPago||0) + valor;
+        const quitouTudo = valor >= saldoAntes;
+        a.pagamentosMensalidade[mesKey][pid] = { pago: quitouTudo, data: d.data, valorPago: novoValorPago };
         ui.modal=null; ui.draftBaixa=null; ui.finBaixaJogadorId=null;
-        await saveData(); showToast('Baixa dada!'); render();
+        await saveData();
+        showToast(quitouTudo ? 'Baixa dada! Pagamento quitado.' : `Baixa parcial registrada. Restam R$ ${Math.max(0,saldoAntes-valor).toFixed(2)}.`);
+        render();
       };
     }
 
@@ -4232,7 +4242,7 @@ function traduzErroAuth(e){
       const atual = a.pagamentosMensalidade[mes][pid] || {pago:false};
       const novoPago = !atual.pago;
       const hojeIso = new Date().toISOString().slice(0,10);
-      a.pagamentosMensalidade[mes][pid] = { pago: novoPago, data: hojeIso };
+      a.pagamentosMensalidade[mes][pid] = { pago: novoPago, data: hojeIso, valorPago: novoPago ? (a.mensalidadeValor||0) : 0 };
       a.transacoes = a.transacoes || [];
       a.transacoes = a.transacoes.filter(t=> !(t.jogadorId===pid && t.origem==='dar-baixa' && finMesKey(t.data)===mes));
       if(novoPago){
