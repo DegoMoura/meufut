@@ -2000,13 +2000,9 @@ function traduzErroAuth(e){
     if(!a) return `<div class="empty"><span class="ball">💰</span>Entre em uma associação para ver o financeiro.</div>`;
     a.pagamentosMensalidade = a.pagamentosMensalidade || {};
     const mesKey = mesAtualKey();
-    const pagamentosMes = a.pagamentosMensalidade[mesKey] || {};
-    const membros = a.memberIds.map(playerById).filter(Boolean);
     const souAdmin = a.adminId===me;
     const p = myPlayer();
     const initials = p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-    const meuRegistro = pagamentosMes[me];
-    const euPaguei = !!(meuRegistro && meuRegistro.pago);
     const editando = souAdmin && ui.finEditando;
     if(editando && !ui.draftFinanceiro){
       ui.draftFinanceiro = {
@@ -2094,26 +2090,6 @@ function traduzErroAuth(e){
       <div class="card">
         ${renderHistoricoPagamento(a)}
       </div>
-
-      ${souAdmin ? `
-        <div class="eyebrow" style="margin-top:18px;">Gerenciar pagamentos — ${mesLabel(mesKey)}</div>
-        <p class="lead" style="margin:2px 0 8px;">"Dar baixa" quita a mensalidade e todas as multas acumuladas do sócio.</p>
-        <div class="card">
-          ${membros.map(mp=>{
-            const saldoMp = calcularSaldoJogador(mp.id, a, mesKey);
-            const pago = saldoMp.total===0;
-            return `
-            <div class="list-row">
-              <div class="jersey" style="width:32px;height:32px;font-size:13px;">${pago?'✅':'⏰'}</div>
-              <div style="flex:1;">
-                <div class="name">${mp.name}${mp.id===a.adminId?' 👑':''}</div>
-                <div class="meta">${pago?'Em dia':'Deve R$ '+saldoMp.total.toFixed(2)}</div>
-              </div>
-              <button class="btn btn-sm ${pago?'btn-ghost':'btn-gold'}" data-toggle-mensalidade="${mp.id}" data-mes="${mesKey}">${pago?'Marcar em atraso':'Dar baixa'}</button>
-            </div>`;
-          }).join('')}
-        </div>
-      ` : ''}
     `;
   }
   function renderHistoricoPagamento(a){
@@ -4287,31 +4263,6 @@ function traduzErroAuth(e){
       if(navigator.clipboard) navigator.clipboard.writeText(a.chavePix).catch(()=>{});
       showToast('Chave PIX copiada!');
     };
-    document.querySelectorAll('[data-toggle-mensalidade]').forEach(el=> el.onclick = async ()=>{
-      const a = associacaoAtual();
-      const pid = el.dataset.toggleMensalidade;
-      const mes = el.dataset.mes;
-      a.pagamentosMensalidade[mes] = a.pagamentosMensalidade[mes] || {};
-      const atual = a.pagamentosMensalidade[mes][pid] || {pago:false};
-      const novoPago = !atual.pago;
-      const hojeIso = new Date().toISOString().slice(0,10);
-      a.pagamentosMensalidade[mes][pid] = { pago: novoPago, data: hojeIso, valorPago: novoPago ? (a.mensalidadeValor||0) : 0 };
-      a.transacoes = a.transacoes || [];
-      a.transacoes = a.transacoes.filter(t=> !(t.jogadorId===pid && t.origem==='dar-baixa' && finMesKey(t.data)===mes));
-      if(novoPago){
-        // dar baixa quita o valor total: mensalidade + multa por atraso + todas as multas de cartão acumuladas até agora
-        const stats = statsForAssociacao(pid, associacaoId);
-        a.cartoesQuitados = a.cartoesQuitados || {};
-        a.cartoesQuitados[pid] = { amarelo: stats.amarelo||0, vermelho: stats.vermelho||0, azul: stats.azul||0 };
-        a.transacoes.push({ id: uid(), natureza:'recebimento', categoria:'Mensalidade', valor: a.mensalidadeValor||0,
-          descricao: mesLabel(mes), data: hojeIso, jogadorId: pid, origem:'dar-baixa', criadoPor: me, criadoEm: new Date().toISOString() });
-        showToast('Baixa dada! Mensalidade e multas quitadas.');
-      } else {
-        showToast('Pagamento marcado em atraso.');
-      }
-      await saveData(); render();
-    });
-
     document.querySelectorAll('[data-mtab]').forEach(el=> el.onclick = ()=>{ ui.matchTab = el.dataset.mtab; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; render(); });
     document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; render(); });
     const continuarTimesBtn = document.querySelector('[data-action="continuar-times"]');
