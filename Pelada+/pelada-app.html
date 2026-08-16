@@ -3094,7 +3094,9 @@ function traduzErroAuth(e){
     if(sub==='aniversariantes') return renderResenhaAniversariantes();
     if(sub==='selecao') return renderResenhaSelecao();
     if(sub==='raiox') return renderResenhaEmBreve('Raio-X', '🔬', 'Descubra quem são seus parceiros ideais e seus maiores rivais dentro de campo, com estatísticas avançadas de relação entre jogadores.');
-    if(sub==='churrascos') return renderResenhaEmBreve('Churrascos', '🍖', 'Organize churrascos e outros eventos do grupo: confirmação de presença, divisão de itens e cálculo automático de quanto cada um deve pagar.');
+    if(sub==='churrascos') return renderResenhaChurrascos();
+    if(sub==='churrasco-detalhe') return renderChurrascoDetalhe();
+    if(sub==='pelada-resumo') return renderResenhaPeladaResumo();
     return renderResenhaHub();
   }
   function renderResenhaHub(){
@@ -3121,7 +3123,7 @@ function traduzErroAuth(e){
     `;
   }
   function renderResenhaPeladas(){
-    const gids = myGroups().map(g=>g.id);
+    const gids = data.groups.filter(g=>g.associacaoId===associacaoId).map(g=>g.id);
     const partidas = data.matches.filter(m=> gids.includes(m.groupId) && m.status==='finalizada' && m.times).sort((a,b)=> b.date.localeCompare(a.date));
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-resenha" style="margin-bottom:14px;">← Resenha</button>
@@ -3131,13 +3133,211 @@ function traduzErroAuth(e){
           const g = groupById(m.groupId);
           const numA = m.timeA+1, numB = m.timeB+1;
           return `
-          <div class="card tight" data-open-match="${m.id}" style="cursor:pointer;">
+          <div class="card tight" data-resumo-match="${m.id}" style="cursor:pointer;">
             <div class="row"><div style="font-weight:800;">📅 ${fmtDate(m.date)}</div><div class="meta">${g.name}</div></div>
             <div class="display" style="text-align:center;font-size:22px;color:var(--gold);margin-top:6px;">Time ${numA} ${m.placar.A} <span style="font-size:12px;color:var(--ink-dim);font-family:Inter;">x</span> ${m.placar.B} Time ${numB}</div>
           </div>`;
         }).join('')}
     `;
   }
+  function renderResenhaPeladaResumo(){
+    const m = matchById(ui.resumoMatchId);
+    if(!m){ ui.resenhaSub='peladas'; ui.resumoMatchId=null; return renderResenhaPeladas(); }
+    const g = groupById(m.groupId);
+    const numA = m.timeA+1, numB = m.timeB+1;
+    const timeAIds = jogadoresDoTime(m,'A'), timeBIds = jogadoresDoTime(m,'B');
+    const dentroIds = [...timeAIds, ...timeBIds];
+    const foraIds = (m.confirmed||[]).filter(id=> !dentroIds.includes(id));
+    const notaMedia = pid=>{
+      const notas = m.avaliacoesFeitas ? Object.values(m.avaliacoesFeitas).map(o=>o[pid]).filter(n=>n!=null) : [];
+      return notas.length ? (notas.reduce((a,b)=>a+b,0)/notas.length) : null;
+    };
+    const linhaJogador = (pid, numTime) => {
+      const pl = playerById(pid); if(!pl) return '';
+      const gols = (m.golsPorJogador && m.golsPorJogador[pid]) || 0;
+      const nota = notaMedia(pid);
+      return `<div class="list-row">
+        <div class="jersey" style="width:30px;height:30px;font-size:11px;">${numTime}</div>
+        <div style="flex:1;"><div class="name">${pl.name}</div>${gols?`<div class="meta">⚽ ${gols} gol${gols>1?'s':''}</div>`:''}</div>
+        ${nota!=null?`<div class="meta">⭐ ${nota.toFixed(1)}</div>`:''}
+      </div>`;
+    };
+    const souAdmin = souAdminAssoc();
+    return `
+      <button class="btn btn-ghost btn-sm" data-action="resumo-voltar" style="margin-bottom:12px;">← Últimas Peladas</button>
+      <div class="row" style="align-items:flex-start;">
+        <h1 class="page-title" style="margin-bottom:0;">🗓️ Resumo da pelada</h1>
+        ${souAdmin ? `<button class="btn btn-ghost btn-sm" data-action="resumo-abrir-menu" style="padding:6px 12px;">⋮</button>` : ''}
+      </div>
+      <p class="lead">${fmtDate(m.date)}${g?' · '+g.name:''} · 📍 ${m.local||''}</p>
+      ${ui.resumoMenuAberto ? `
+        <div class="modal-bg" data-close-resumo-menu="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
+          <div class="modal-handle"></div>
+          <div class="list-row" data-action="resumo-compartilhar" style="cursor:pointer;"><div class="name">🔗 Compartilhar</div></div>
+          <div class="list-row" data-action="resumo-remover-pelada" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Remover pelada</div></div>
+        </div></div>` : ''}
+      <div class="card" style="text-align:center;">
+        <div class="display" style="font-size:28px;color:var(--gold);">Time ${numA} ${m.placar.A} <span style="font-size:12px;color:var(--ink-dim);font-family:Inter;">x</span> ${m.placar.B} Time ${numB}</div>
+      </div>
+      <div class="eyebrow" style="margin-top:16px;">Dentro (${dentroIds.length})</div>
+      <div class="card">
+        ${dentroIds.length===0 ? `<p class="lead" style="margin:0;">Ninguém escalado.</p>` : `
+          ${timeAIds.length ? `<div class="meta" style="margin-bottom:4px;">Time ${numA}</div>${timeAIds.map(pid=>linhaJogador(pid,numA)).join('')}` : ''}
+          ${timeBIds.length ? `<div class="meta" style="margin:10px 0 4px;">Time ${numB}</div>${timeBIds.map(pid=>linhaJogador(pid,numB)).join('')}` : ''}
+        `}
+      </div>
+      ${foraIds.length>0 ? `
+      <div class="eyebrow" style="margin-top:14px;">Fora (${foraIds.length})</div>
+      <div class="card">${foraIds.map(pid=>{ const pl=playerById(pid); return pl?`<div class="list-row"><div class="name">${pl.name}</div></div>`:''; }).join('')}</div>` : ''}
+    `;
+  }
+
+  // ---------- CHURRASCOS ----------
+  const CHURRASCO_TIPOS = [
+    {key:'vip', label:'VIP', desc:'A casa do grupo cobre o custo e ele é dividido entre todos que confirmarem presença.'},
+    {key:'livre', label:'Livre', desc:'Cada participante é responsável pelo que for consumir. Sem cobrança pelo app.'},
+    {key:'pre-pago', label:'Pré-pago', desc:'O valor por pessoa é cobrado antecipadamente, antes do evento.'},
+    {key:'pos-pago', label:'Pós-pago', desc:'O custo total é rateado entre os confirmados e cobrado depois do evento.'},
+  ];
+  function churrascoElegiveis(a, ch){
+    const ids = ch.participantesTipo==='mensalistas'
+      ? (a.memberIds||[]).filter(id=> !(a.diaristas||[]).includes(id))
+      : (a.memberIds||[]);
+    return ids.map(playerById).filter(Boolean);
+  }
+  function renderResenhaChurrascos(){
+    const a = associacaoAtual();
+    if(!a) return `<div class="empty"><span class="ball">🍖</span>Entre em uma associação para ver os churrascos.</div>`;
+    a.churrascos = a.churrascos || [];
+    const lista = a.churrascos.slice().sort((x,y)=> y.data.localeCompare(x.data));
+    const hoje = new Date().toISOString().slice(0,10);
+    const proximos = lista.filter(c=>c.data>=hoje);
+    const passados = lista.filter(c=>c.data<hoje);
+    const podeEditar = souAdminAssoc();
+    const linha = c=>{
+      const qtd = (c.confirmados||[]).length;
+      return `<div class="card tight row" data-churrasco-abrir="${c.id}" style="cursor:pointer;margin-bottom:8px;">
+        <div><div class="name">${c.nome}</div><div class="meta">📅 ${fmtDate(c.data)}${c.hora?' · ⏰ '+c.hora:''}</div></div>
+        <div class="meta">${qtd} confirmado${qtd===1?'':'s'}</div>
+      </div>`;
+    };
+    return `
+      <button class="btn btn-ghost btn-sm" data-action="voltar-resenha" style="margin-bottom:14px;">← Resenha</button>
+      <h1 class="page-title">🍖 Churrascos</h1>
+      ${lista.length===0 ? `<div class="empty"><span class="ball">🍖</span>Nenhum churrasco marcado ainda.</div>` : `
+        ${proximos.length ? `<div class="eyebrow">Próximos</div>${proximos.map(linha).join('')}` : ''}
+        ${passados.length ? `<div class="eyebrow" style="margin-top:14px;">Histórico</div>${passados.map(linha).join('')}` : ''}
+      `}
+      ${podeEditar ? `<button class="fab" data-action="abrir-marcar-churrasco">+</button>` : ''}
+    `;
+  }
+  function renderModalMarcarChurrasco(){
+    if(!ui.draftChurrasco) ui.draftChurrasco = { tipo:'livre', participantesTipo:'todos', nome:'', data:'', hora:'', dataLimite:'', horaLimite:'', endereco:'', custoTotal:'' };
+    const d = ui.draftChurrasco;
+    const valido = d.nome.trim() && d.data;
+    return `
+      <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:22px;">Marcar churrasco</h1>
+        <label style="margin-top:0;">Tipo do churrasco</label>
+        ${CHURRASCO_TIPOS.map(t=>`
+          <div class="list-row" data-churrasco-tipo="${t.key}" style="cursor:pointer;align-items:flex-start;">
+            <span class="check-box ${d.tipo===t.key?'checked':''}" style="border-radius:50%;margin-top:2px;">${d.tipo===t.key?'●':''}</span>
+            <div style="flex:1;"><div class="name">${t.label}</div><div class="meta">${t.desc}</div></div>
+          </div>`).join('')}
+        <div class="divider-field"></div>
+        <label>Participantes</label>
+        <div class="list-row" data-churrasco-participantes="todos" style="cursor:pointer;">
+          <span class="check-box ${d.participantesTipo==='todos'?'checked':''}" style="border-radius:50%;">${d.participantesTipo==='todos'?'●':''}</span>
+          <div><div class="name">Mensalistas, diaristas e convidados</div><div class="meta">Todos os membros podem confirmar presença.</div></div>
+        </div>
+        <div class="list-row" data-churrasco-participantes="mensalistas" style="cursor:pointer;">
+          <span class="check-box ${d.participantesTipo==='mensalistas'?'checked':''}" style="border-radius:50%;">${d.participantesTipo==='mensalistas'?'●':''}</span>
+          <div><div class="name">Apenas mensalistas</div><div class="meta">Somente mensalistas podem confirmar presença.</div></div>
+        </div>
+        <label>Nome do evento</label>
+        <input id="ch-nome" placeholder="Ex: Churrasco de fim de ano" value="${d.nome}">
+        <label>Data do churrasco</label>
+        <input id="ch-data" type="date" value="${d.data}">
+        <label>Hora</label>
+        <input id="ch-hora" type="time" value="${d.hora}">
+        <label>Data limite para confirmar</label>
+        <input id="ch-data-limite" type="date" value="${d.dataLimite}">
+        <label>Hora limite para confirmar</label>
+        <input id="ch-hora-limite" type="time" value="${d.horaLimite}">
+        <label>Endereço</label>
+        <input id="ch-endereco" placeholder="Local do churrasco" value="${d.endereco}">
+        <label>Custo total (R$)</label>
+        <input id="ch-custo" type="number" placeholder="0,00" value="${d.custoTotal}">
+        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-churrasco" ${valido?'':'disabled style="opacity:.5"'}>Salvar</button>
+      </div></div>
+    `;
+  }
+  function renderChurrascoDetalhe(){
+    const a = associacaoAtual();
+    if(!a) return '';
+    a.churrascos = a.churrascos || [];
+    const ch = a.churrascos.find(c=>c.id===ui.churrascoId);
+    if(!ch){ ui.resenhaSub='churrascos'; ui.churrascoId=null; return renderResenhaChurrascos(); }
+    ch.pagamentos = ch.pagamentos || {};
+    ch.confirmados = ch.confirmados || [];
+    const podeEditar = souAdminAssoc();
+    const elegiveis = churrascoElegiveis(a, ch);
+    const confirmados = elegiveis.filter(pl=> ch.confirmados.includes(pl.id));
+    const naoConfirmados = elegiveis.filter(pl=> !ch.confirmados.includes(pl.id));
+    const temPagamento = ch.tipo==='pre-pago' || ch.tipo==='pos-pago';
+    const custoPorPessoa = confirmados.length && ch.custoTotal ? (parseFloat(ch.custoTotal)/confirmados.length) : 0;
+    const jaConfirmei = ch.confirmados.includes(me);
+    const hoje = new Date().toISOString().slice(0,10);
+    const janelaFechada = !!(ch.dataLimite && ch.dataLimite < hoje);
+    const souElegivel = elegiveis.some(pl=>pl.id===me);
+    const tipoInfo = CHURRASCO_TIPOS.find(t=>t.key===ch.tipo);
+    return `
+      <button class="btn btn-ghost btn-sm" data-action="churrasco-voltar" style="margin-bottom:12px;">← Churrascos</button>
+      <div class="row" style="align-items:flex-start;">
+        <h1 class="page-title" style="margin-bottom:0;">${ch.nome}</h1>
+        ${podeEditar ? `<button class="btn btn-ghost btn-sm" data-action="churrasco-abrir-menu" style="padding:6px 12px;">⋮</button>` : ''}
+      </div>
+      <p class="lead">📅 ${fmtDate(ch.data)}${ch.hora?' · ⏰ '+ch.hora:''}</p>
+      ${ui.churrascoMenuAberto ? `
+        <div class="modal-bg" data-close-churrasco-menu="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
+          <div class="modal-handle"></div>
+          <div class="list-row" data-action="churrasco-remover" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Remover churrasco</div></div>
+        </div></div>` : ''}
+      <div class="card">
+        <div class="list-row"><div class="name">Tipo</div><div class="meta">${tipoInfo?tipoInfo.label:ch.tipo}</div></div>
+        ${ch.endereco ? `<div class="list-row"><div class="name">Endereço</div><div class="meta">${ch.endereco}</div></div>` : ''}
+        ${ch.custoTotal ? `<div class="list-row"><div class="name">Custo total</div><div class="meta">R$ ${parseFloat(ch.custoTotal).toFixed(2)}</div></div>` : ''}
+        ${temPagamento && custoPorPessoa>0 ? `<div class="list-row"><div class="name">Valor por pessoa</div><div class="meta">R$ ${custoPorPessoa.toFixed(2)}</div></div>` : ''}
+        ${ch.dataLimite ? `<div class="list-row"><div class="name">Confirmar até</div><div class="meta">${fmtDate(ch.dataLimite)}${ch.horaLimite?' '+ch.horaLimite:''}</div></div>` : ''}
+      </div>
+      ${souElegivel ? `
+      <div class="card tight" style="margin-top:14px;">
+        <div class="eyebrow" style="margin:0 0 8px;">Você vai participar?</div>
+        <div class="chip-row">
+          <div class="chip ${jaConfirmei?'active':''}" data-churrasco-confirmar="1" ${janelaFechada?'style="opacity:.5;pointer-events:none;"':''}>✅ Vou</div>
+          <div class="chip ${!jaConfirmei?'active':''}" data-churrasco-confirmar="0" ${janelaFechada?'style="opacity:.5;pointer-events:none;"':''}>❌ Não vou</div>
+        </div>
+        ${janelaFechada ? `<p class="lead" style="margin-top:8px;color:#e8917a;">Prazo de confirmação encerrado.</p>` : ''}
+      </div>` : ''}
+      <div class="eyebrow" style="margin-top:16px;">Confirmados (${confirmados.length})</div>
+      <div class="card">
+        ${confirmados.length===0 ? `<p class="lead" style="margin:0;">Ninguém confirmou ainda.</p>` : confirmados.map(pl=>{
+          const pago = !!ch.pagamentos[pl.id];
+          return `<div class="list-row">
+            <div style="flex:1;" class="name">${pl.name}</div>
+            ${temPagamento ? (podeEditar
+              ? `<button class="btn btn-sm ${pago?'btn-ghost':'btn-gold'}" data-churrasco-toggle-pago="${pl.id}">${pago?'✓ Pago':'Marcar pago'}</button>`
+              : `<span class="badge ${pago?'badge-done':'badge-full'}">${pago?'✓ Pago':'Não pago'}</span>`) : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      ${naoConfirmados.length>0 ? `
+      <div class="eyebrow" style="margin-top:14px;">Ainda não confirmaram (${naoConfirmados.length})</div>
+      <div class="card">${naoConfirmados.map(pl=>`<div class="list-row"><div class="name">${pl.name}</div></div>`).join('')}</div>` : ''}
+    `;
+  }
+
   function renderResenhaAniversariantes(){
     const a = associacaoAtual();
     const players = (a ? a.memberIds : []).map(playerById).filter(Boolean).filter(p=>p.nascimento);
@@ -3335,15 +3535,15 @@ function traduzErroAuth(e){
   function renderConfigJogador(){
     const p = myPlayer();
     const idade = calcAge(p.nascimento);
-    const principaisTexto = CAMPO_TIPOS.map(t=> `${t}: ${posicaoPrincipalPara(p,t)}`).join(' · ');
+    const tipoAtual = campoTipoAtual();
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-config-pessoal" style="margin-bottom:14px;">← Configurações</button>
       <h1 class="page-title">⚽ ${p.name}</h1>
       <p class="lead">${idade!==null?idade+' anos · ':''}Pé ${p.pe.toLowerCase()}</p>
-      <p class="lead" style="margin-top:-14px;">${principaisTexto}</p>
+      <p class="lead" style="margin-top:-14px;">${tipoAtual}: ${posicaoPrincipalPara(p,tipoAtual)}</p>
       <div class="card">
         <div class="row">
-          <div class="display" style="font-size:44px;color:var(--gold);">${ovr(p, campoTipoAtual())}</div>
+          <div class="display" style="font-size:44px;color:var(--gold);">${ovr(p, tipoAtual)}</div>
           <div style="text-align:right;">
             <div class="meta">${p.stats.jogos} partidas</div>
             <div class="meta">${p.stats.gols} gols · ${p.stats.assistencias} assist.</div>
@@ -3351,18 +3551,16 @@ function traduzErroAuth(e){
           </div>
         </div>
       </div>
-      ${CAMPO_TIPOS.map(tipo=>`
-        <div class="eyebrow" style="margin-top:16px;">Notas por posição — ${tipo}</div>
-        <p class="lead" style="margin:2px 0 6px;">Toque nas estrelas pra ajustar sua autoavaliação.</p>
-        <div class="card">
-          ${posicoesParaCampo(tipo).map(pos=>`
-            <div class="pos-rate-row">
-              <div class="pos-name">${pos}${posicaoPrincipalPara(p,tipo)===pos?' 🔸':''}</div>
-              <div class="star-picker interactive">${starPickerHtml(pos, estrelasPara(p,tipo,pos), true, tipo, p.id)}</div>
-              <div class="pos-val">${estrelasPara(p,tipo,pos)}</div>
-            </div>`).join('')}
-        </div>
-      `).join('')}
+      <div class="eyebrow" style="margin-top:16px;">Notas por posição — ${tipoAtual}</div>
+      <p class="lead" style="margin:2px 0 6px;">Toque nas estrelas pra ajustar sua autoavaliação.</p>
+      <div class="card">
+        ${posicoesParaCampo(tipoAtual).map(pos=>`
+          <div class="pos-rate-row">
+            <div class="pos-name">${pos}${posicaoPrincipalPara(p,tipoAtual)===pos?' 🔸':''}</div>
+            <div class="star-picker interactive">${starPickerHtml(pos, estrelasPara(p,tipoAtual,pos), true, tipoAtual, p.id)}</div>
+            <div class="pos-val">${estrelasPara(p,tipoAtual,pos)}</div>
+          </div>`).join('')}
+      </div>
       <div class="eyebrow" style="margin-top:16px;">Informações do jogador</div>
       <div class="card">
         <div class="list-row"><div class="name">Altura</div><div class="meta">${p.altura?p.altura+' cm':'—'}</div></div>
@@ -3379,7 +3577,7 @@ function traduzErroAuth(e){
   }
   function renderConfigPessoais(){
     const p = myPlayer();
-    if(!ui.draftConfigPessoais) ui.draftConfigPessoais = {whatsapp:p.whatsapp, nascimento:p.nascimento, estado:p.estado, cidade:p.cidade, genero:p.genero, estadoCivil:p.estadoCivil, filhos:p.filhos};
+    if(!ui.draftConfigPessoais) ui.draftConfigPessoais = {whatsapp:p.whatsapp, nascimento:p.nascimento, estado:p.estado, cidade:p.cidade, genero:p.genero, estadoCivil:p.estadoCivil, filhos:p.filhos, pe:p.pe};
     const d = ui.draftConfigPessoais;
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-config-pessoal" style="margin-bottom:14px;">← Configurações</button>
@@ -3393,6 +3591,7 @@ function traduzErroAuth(e){
         <label>Gênero</label><div class="chip-row">${['Masculino','Feminino'].map(g=>`<div class="chip ${d.genero===g?'active':''}" data-cfgp-genero="${g}">${g}</div>`).join('')}</div>
         <label>Estado civil</label><div class="chip-row">${['Solteiro','Casado','Viúvo'].map(c=>`<div class="chip ${d.estadoCivil===c?'active':''}" data-cfgp-civil="${c}">${c}</div>`).join('')}</div>
         <label>Possui filhos?</label><div class="chip-row">${['Sim','Não'].map(f=>`<div class="chip ${d.filhos===f?'active':''}" data-cfgp-filhos="${f}">${f}</div>`).join('')}</div>
+        <label>Pé dominante</label><div class="chip-row">${['Direito','Esquerdo','Ambidestro'].map(pe=>`<div class="chip ${d.pe===pe?'active':''}" data-cfgp-pe="${pe}">${pe}</div>`).join('')}</div>
         <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="salvar-config-pessoais">Salvar</button>
       </div>
     `;
@@ -3455,6 +3654,7 @@ function traduzErroAuth(e){
     if(ui.modal==='criar-transacao') return renderModalCriarTransacao();
     if(ui.modal==='cobrar-receber') return renderModalCobrarReceber();
     if(ui.modal==='dar-baixa') return renderModalDarBaixaJogador();
+    if(ui.modal==='marcar-churrasco') return renderModalMarcarChurrasco();
     return '';
   }
   function obterOuCriarFutPadrao(){
@@ -3650,6 +3850,98 @@ function traduzErroAuth(e){
     const voltarResenhaBtn = document.querySelector('[data-action="voltar-resenha"]');
     if(voltarResenhaBtn) voltarResenhaBtn.onclick = ()=>{ ui.resenhaSub=null; view='resenha'; render(); };
 
+    document.querySelectorAll('[data-resumo-match]').forEach(el=> el.onclick = ()=>{
+      ui.resumoMatchId = el.dataset.resumoMatch; ui.resenhaSub = 'pelada-resumo'; ui.resumoMenuAberto=false; render();
+    });
+    const resumoVoltarBtn = document.querySelector('[data-action="resumo-voltar"]');
+    if(resumoVoltarBtn) resumoVoltarBtn.onclick = ()=>{ ui.resenhaSub='peladas'; ui.resumoMatchId=null; ui.resumoMenuAberto=false; render(); };
+    const resumoAbrirMenuBtn = document.querySelector('[data-action="resumo-abrir-menu"]');
+    if(resumoAbrirMenuBtn) resumoAbrirMenuBtn.onclick = ()=>{ ui.resumoMenuAberto=true; render(); };
+    document.querySelectorAll('[data-close-resumo-menu]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.resumoMenuAberto=false; render(); } });
+    const resumoCompartilharBtn = document.querySelector('[data-action="resumo-compartilhar"]');
+    if(resumoCompartilharBtn) resumoCompartilharBtn.onclick = ()=>{
+      const m = matchById(ui.resumoMatchId); const g = m ? groupById(m.groupId) : null;
+      if(m){
+        const numA = m.timeA+1, numB = m.timeB+1;
+        const texto = `⚽ ${g?g.name:''}\n📅 ${fmtDate(m.date)}\nTime ${numA} ${m.placar.A} x ${m.placar.B} Time ${numB}\nVeja o resumo completo no app Pelada+!`;
+        if(navigator.clipboard) navigator.clipboard.writeText(texto).catch(()=>{});
+        showToast('Resumo copiado!');
+      }
+      ui.resumoMenuAberto=false; render();
+    };
+    const resumoRemoverBtn = document.querySelector('[data-action="resumo-remover-pelada"]');
+    if(resumoRemoverBtn) resumoRemoverBtn.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
+      if(!confirm('Remover essa pelada do histórico? Essa ação não pode ser desfeita.')) return;
+      data.matches = data.matches.filter(mm=>mm.id!==ui.resumoMatchId);
+      ui.resumoMenuAberto=false; ui.resumoMatchId=null; ui.resenhaSub='peladas';
+      await saveData(); showToast('Pelada removida.'); render();
+    };
+
+    // ---- Churrascos ----
+    const abrirMarcarChurrascoBtn = document.querySelector('[data-action="abrir-marcar-churrasco"]');
+    if(abrirMarcarChurrascoBtn) abrirMarcarChurrascoBtn.onclick = ()=>{
+      if(!souAdminAssoc()) return;
+      ui.draftChurrasco=null; ui.modal='marcar-churrasco'; render();
+    };
+    if(ui.modal==='marcar-churrasco' && ui.draftChurrasco){
+      const d = ui.draftChurrasco;
+      document.querySelectorAll('[data-churrasco-tipo]').forEach(el=> el.onclick = ()=>{ d.tipo = el.dataset.churrascoTipo; render(); });
+      document.querySelectorAll('[data-churrasco-participantes]').forEach(el=> el.onclick = ()=>{ d.participantesTipo = el.dataset.churrascoParticipantes; render(); });
+      const chNome = document.getElementById('ch-nome'); if(chNome) chNome.oninput = e=>{ d.nome = e.target.value; render(); };
+      const chData = document.getElementById('ch-data'); if(chData) chData.oninput = e=>{ d.data = e.target.value; render(); };
+      const chHora = document.getElementById('ch-hora'); if(chHora) chHora.oninput = e=>{ d.hora = e.target.value; };
+      const chDataLimite = document.getElementById('ch-data-limite'); if(chDataLimite) chDataLimite.oninput = e=>{ d.dataLimite = e.target.value; };
+      const chHoraLimite = document.getElementById('ch-hora-limite'); if(chHoraLimite) chHoraLimite.oninput = e=>{ d.horaLimite = e.target.value; };
+      const chEndereco = document.getElementById('ch-endereco'); if(chEndereco) chEndereco.oninput = e=>{ d.endereco = e.target.value; };
+      const chCusto = document.getElementById('ch-custo'); if(chCusto) chCusto.oninput = e=>{ d.custoTotal = e.target.value; };
+      const salvarChurrascoBtn = document.querySelector('[data-action="salvar-churrasco"]');
+      if(salvarChurrascoBtn) salvarChurrascoBtn.onclick = async ()=>{
+        if(!souAdminAssoc()) return;
+        const a = associacaoAtual(); a.churrascos = a.churrascos || [];
+        a.churrascos.push({ id: uid(), nome: d.nome.trim(), tipo: d.tipo, participantesTipo: d.participantesTipo,
+          data: d.data, hora: d.hora, dataLimite: d.dataLimite, horaLimite: d.horaLimite, endereco: d.endereco.trim(),
+          custoTotal: d.custoTotal, confirmados:[], pagamentos:{}, criadoPor: me, criadoEm: new Date().toISOString() });
+        ui.modal=null; ui.draftChurrasco=null;
+        await saveData(); showToast('Churrasco marcado!'); render();
+      };
+    }
+    document.querySelectorAll('[data-churrasco-abrir]').forEach(el=> el.onclick = ()=>{
+      ui.churrascoId = el.dataset.churrascoAbrir; ui.resenhaSub='churrasco-detalhe'; ui.churrascoMenuAberto=false; render();
+    });
+    const churrascoVoltarBtn = document.querySelector('[data-action="churrasco-voltar"]');
+    if(churrascoVoltarBtn) churrascoVoltarBtn.onclick = ()=>{ ui.resenhaSub='churrascos'; ui.churrascoId=null; ui.churrascoMenuAberto=false; render(); };
+    const churrascoAbrirMenuBtn = document.querySelector('[data-action="churrasco-abrir-menu"]');
+    if(churrascoAbrirMenuBtn) churrascoAbrirMenuBtn.onclick = ()=>{ ui.churrascoMenuAberto=true; render(); };
+    document.querySelectorAll('[data-close-churrasco-menu]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.churrascoMenuAberto=false; render(); } });
+    const churrascoRemoverBtn = document.querySelector('[data-action="churrasco-remover"]');
+    if(churrascoRemoverBtn) churrascoRemoverBtn.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
+      if(!confirm('Remover esse churrasco? Essa ação não pode ser desfeita.')) return;
+      const a = associacaoAtual();
+      a.churrascos = (a.churrascos||[]).filter(c=>c.id!==ui.churrascoId);
+      ui.churrascoMenuAberto=false; ui.churrascoId=null; ui.resenhaSub='churrascos';
+      await saveData(); showToast('Churrasco removido.'); render();
+    };
+    document.querySelectorAll('[data-churrasco-confirmar]').forEach(el=> el.onclick = async ()=>{
+      const a = associacaoAtual(); a.churrascos = a.churrascos || [];
+      const ch = a.churrascos.find(c=>c.id===ui.churrascoId); if(!ch) return;
+      ch.confirmados = ch.confirmados || [];
+      const vou = el.dataset.churrascoConfirmar==='1';
+      ch.confirmados = ch.confirmados.filter(id=>id!==me);
+      if(vou) ch.confirmados.push(me);
+      await saveData(); render();
+    });
+    document.querySelectorAll('[data-churrasco-toggle-pago]').forEach(el=> el.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
+      const a = associacaoAtual(); a.churrascos = a.churrascos || [];
+      const ch = a.churrascos.find(c=>c.id===ui.churrascoId); if(!ch) return;
+      ch.pagamentos = ch.pagamentos || {};
+      const pid = el.dataset.churrascoTogglePago;
+      ch.pagamentos[pid] = !ch.pagamentos[pid];
+      await saveData(); render();
+    });
+
     document.querySelectorAll('[data-open-config]').forEach(el=> el.onclick = ()=>{
       const key = el.dataset.openConfig;
       if(key==='desempenho'){ view='desempenho'; } else { ui.configSub = key; }
@@ -3696,11 +3988,12 @@ function traduzErroAuth(e){
       document.querySelectorAll('[data-cfgp-genero]').forEach(el=> el.onclick = ()=>{ d.genero = el.dataset.cfgpGenero; render(); });
       document.querySelectorAll('[data-cfgp-civil]').forEach(el=> el.onclick = ()=>{ d.estadoCivil = el.dataset.cfgpCivil; render(); });
       document.querySelectorAll('[data-cfgp-filhos]').forEach(el=> el.onclick = ()=>{ d.filhos = el.dataset.cfgpFilhos; render(); });
+      document.querySelectorAll('[data-cfgp-pe]').forEach(el=> el.onclick = ()=>{ d.pe = el.dataset.cfgpPe; render(); });
       const salvarPessoaisBtn = document.querySelector('[data-action="salvar-config-pessoais"]');
       if(salvarPessoaisBtn) salvarPessoaisBtn.onclick = async ()=>{
         const p = myPlayer();
         p.whatsapp=d.whatsapp.trim(); p.nascimento=d.nascimento; p.estado=d.estado; p.cidade=d.cidade.trim();
-        p.genero=d.genero; p.estadoCivil=d.estadoCivil; p.filhos=d.filhos;
+        p.genero=d.genero; p.estadoCivil=d.estadoCivil; p.filhos=d.filhos; p.pe=d.pe;
         ui.draftConfigPessoais=null;
         await saveData(); showToast('Dados pessoais atualizados!'); ui.configSub=null; render();
       };
