@@ -1862,9 +1862,10 @@ function traduzErroAuth(e){
     `;
   }
   function renderCfgHub(g, podeEditar){
+    const a = associacaoAtual();
     const itensBase = [
       {key:'jogadores', icon:'👥', label:'Jogadores'},
-      {key:'financeiro', icon:'💰', label:'Financeiro'},
+      ...(podeEditar || !(a && a.financeiroSoAdmin) ? [{key:'financeiro', icon:'💰', label:'Financeiro'}] : []),
     ];
     const itens = [
       {key:'dados', icon:'📋', label:'Dados do Fut'},
@@ -2156,6 +2157,12 @@ function traduzErroAuth(e){
     if(!a) return '';
     a.transacoes = a.transacoes || [];
     const podeEditar = souAdminAssoc();
+    if(a.financeiroSoAdmin && !podeEditar){
+      return `
+        <button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>
+        <div class="empty"><span class="ball">🔒</span>Apenas admin e dono podem ver o Financeiro.</div>
+      `;
+    }
     if(ui.finJogadorId) return renderFinJogadorDetalhe(a);
     if(ui.finTelaSelecao) return renderSelecionarJogadoresFinanceiro(a);
     const tab = ui.finTab || 'resumo';
@@ -2212,9 +2219,6 @@ function traduzErroAuth(e){
         <div class="fin-kpi"><div class="fin-kpi-icon">👥</div><div class="fin-kpi-label">Qtd de mensalistas</div><div class="fin-kpi-value">${membros.length}</div></div>
       </div>
       <div class="card" style="margin-top:12px;">
-        <div class="list-row"><div class="name">Mensalidade</div><div class="meta">R$ ${a.mensalidadeValor||0}</div></div>
-        <div class="list-row"><div class="name">Diária</div><div class="meta">R$ ${a.valorDiaria||0}</div></div>
-        <div class="list-row"><div class="name">Valor do campo</div><div class="meta">R$ ${a.valorCampo||0}</div></div>
         <div class="list-row"><div class="name">Dia do vencimento</div><div class="meta">${a.mensalidadeVencimento||'—'}</div></div>
         <div class="list-row"><div class="name">Chave PIX</div><div class="meta" style="max-width:180px;text-align:right;word-break:break-all;">${a.chavePix||'—'}</div></div>
         ${podeEditar ? `<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-action="editar-fin-config">${editando?'Cancelar':'✏️ Editar valores'}</button>` : ''}
@@ -2228,6 +2232,13 @@ function traduzErroAuth(e){
           <button class="btn btn-gold btn-block" style="margin-top:10px;" data-action="salvar-fin-config">Salvar</button>
         ` : ''}
       </div>
+      ${podeEditar ? `
+      <div class="card" style="margin-top:12px;">
+        <div class="list-row">
+          <div style="flex:1;"><div class="name">🔒 Financeiro só para admin</div><div class="meta">Membros e diaristas não verão a aba Financeiro.</div></div>
+          <button class="btn btn-sm ${a.financeiroSoAdmin?'btn-gold':'btn-ghost'}" data-action="toggle-fin-so-admin">${a.financeiroSoAdmin?'Ativado':'Desativado'}</button>
+        </div>
+      </div>` : ''}
     `;
   }
   function renderFinCaixa(a, podeEditar){
@@ -2271,9 +2282,14 @@ function traduzErroAuth(e){
       const status = finStatusJogador(a, pl, mesKey);
       const saldo = calcularSaldoJogador(pl.id, a, mesKey);
       return `
-        <div class="list-row" data-fin-abrir-jogador="${pl.id}" style="cursor:pointer;">
-          <div style="flex:1;"><div class="name">${pl.name}</div>${status!=='em-dia'?`<div class="meta" style="color:#e8917a;">Vencido R$ ${saldo.total.toFixed(2)}</div>`:''}</div>
-          <span class="badge ${status==='em-dia'?'badge-done':'badge-full'}">${status==='em-dia'?'✓ Em dia':status==='em-atraso'?'⏱ Em atraso':'Pendente'}</span>
+        <div class="list-row">
+          <div style="flex:1;min-width:0;cursor:pointer;" data-fin-abrir-jogador="${pl.id}">
+            <div class="name">${pl.name}</div>${status!=='em-dia'?`<div class="meta" style="color:#e8917a;">Vencido R$ ${saldo.total.toFixed(2)}</div>`:''}
+            <span class="badge ${status==='em-dia'?'badge-done':'badge-full'}" style="margin-top:4px;display:inline-block;">${status==='em-dia'?'✓ Em dia':status==='em-atraso'?'⏱ Em atraso':'Pendente'}</span>
+          </div>
+          ${podeEditar ? (status==='em-dia'
+            ? `<button class="btn btn-sm btn-ghost" data-fin-marcar-atraso="${pl.id}">Marcar em atraso</button>`
+            : `<button class="btn btn-sm btn-gold" data-fin-dar-baixa="${pl.id}">Dar baixa</button>`) : ''}
         </div>`;
     };
     return `
@@ -2383,6 +2399,30 @@ function traduzErroAuth(e){
         <label>Data do pagamento</label>
         <input id="tr-data-jog" type="date" value="${d.data}">
         <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-cobranca" ${valorInvalido?'disabled style="opacity:.5"':''}>Salvar</button>
+      </div></div>
+    `;
+  }
+  function renderModalDarBaixaJogador(){
+    const a = associacaoAtual();
+    const pl = playerById(ui.finBaixaJogadorId);
+    if(!a || !pl) return '';
+    const mesKey = mesAtualKey();
+    const saldo = calcularSaldoJogador(pl.id, a, mesKey);
+    if(!ui.draftBaixa) ui.draftBaixa = { valor: saldo.total>0 ? saldo.total : (a.mensalidadeValor||0), descricao:'', data: new Date().toISOString().slice(0,10) };
+    const d = ui.draftBaixa;
+    const valorInvalido = !d.valor || parseFloat(d.valor)<=0;
+    return `
+      <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:22px;">Dar baixa</h1>
+        <p class="lead">${pl.name}${saldo.total>0?` · deve R$ ${saldo.total.toFixed(2)}`:''}</p>
+        <label>Valor recebido (R$)</label>
+        <input id="bx-valor" type="number" value="${d.valor}">
+        <label>Descrição</label>
+        <input id="bx-descricao" placeholder="Ex: Mensalidade de ${mesLabel(mesKey)}" value="${d.descricao}">
+        <label>Data do recebimento</label>
+        <input id="bx-data" type="date" value="${d.data}">
+        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="confirmar-dar-baixa" ${valorInvalido?'disabled style="opacity:.5"':''}>Confirmar</button>
       </div></div>
     `;
   }
@@ -3217,16 +3257,20 @@ function traduzErroAuth(e){
         <button class="btn btn-ghost btn-sm" data-action="trocar-associacao">Trocar</button>
       </div>
     ` : '';
-    if(!fut) return cabecalho + `
-      <div class="card" style="margin-top:14px;">
-        <div class="list-row" data-open-config="jogadores" style="cursor:pointer;">
-          <div class="name" style="flex:1;">👥 Jogadores</div><div class="meta">›</div>
+    if(!fut){
+      const podeEditar = souAdminAssoc();
+      return cabecalho + `
+        <div class="card" style="margin-top:14px;">
+          <div class="list-row" data-open-config="jogadores" style="cursor:pointer;">
+            <div class="name" style="flex:1;">👥 Jogadores</div><div class="meta">›</div>
+          </div>
+          ${podeEditar || !a.financeiroSoAdmin ? `
+          <div class="list-row" data-open-config="financeiro" style="cursor:pointer;">
+            <div class="name" style="flex:1;">💰 Financeiro</div><div class="meta">›</div>
+          </div>` : ''}
         </div>
-        <div class="list-row" data-open-config="financeiro" style="cursor:pointer;">
-          <div class="name" style="flex:1;">💰 Financeiro</div><div class="meta">›</div>
-        </div>
-      </div>
-    `;
+      `;
+    }
     return cabecalho + renderGrupoTabConfig(fut);
   }
   function renderConfigPessoalHub(){
@@ -3374,6 +3418,7 @@ function traduzErroAuth(e){
     if(ui.modal==='jogador-acoes') return renderModalJogadorAcoes();
     if(ui.modal==='criar-transacao') return renderModalCriarTransacao();
     if(ui.modal==='cobrar-receber') return renderModalCobrarReceber();
+    if(ui.modal==='dar-baixa') return renderModalDarBaixaJogador();
     return '';
   }
   function obterOuCriarFutPadrao(){
@@ -3579,6 +3624,7 @@ function traduzErroAuth(e){
       ui.draftCfgLocal=null; ui.draftCfgSorteio=null; ui.draftCfgFila=null; ui.draftFormacao=null; ui.classificarAberto=null;
       ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finEditandoConfig=false;
       ui.draftFinConfig=null; ui.finSelecionados=[]; ui.finBuscaJogador=''; ui.finSelBusca='';
+      ui.draftBaixa=null; ui.finBaixaJogadorId=null;
       render();
     };
     const voltarConfigPessoalBtn = document.querySelector('[data-action="voltar-config-pessoal"]');
@@ -3893,7 +3939,7 @@ function traduzErroAuth(e){
       await saveData(); showToast('Fut marcado! Confirmações abertas.'); render();
     };
 
-    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; ui.jogadorAcoesId=null; ui.draftTransacao=null; ui.draftCobranca=null; render(); } });
+    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; ui.jogadorAcoesId=null; ui.draftTransacao=null; ui.draftCobranca=null; ui.draftBaixa=null; ui.finBaixaJogadorId=null; render(); } });
 
     // ---- Jogadores da associação ----
     const buscaAssocJogadorInput = document.getElementById('assoc-busca-jogador');
@@ -3956,6 +4002,50 @@ function traduzErroAuth(e){
     if(finFecharJogadorBtn) finFecharJogadorBtn.onclick = ()=>{ ui.finJogadorId=null; render(); };
     const finBuscaJogadorInput = document.getElementById('fin-busca-jogador');
     if(finBuscaJogadorInput) finBuscaJogadorInput.oninput = e=>{ ui.finBuscaJogador = e.target.value; render(); };
+
+    const toggleFinSoAdminBtn = document.querySelector('[data-action="toggle-fin-so-admin"]');
+    if(toggleFinSoAdminBtn) toggleFinSoAdminBtn.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
+      const a = associacaoAtual();
+      a.financeiroSoAdmin = !a.financeiroSoAdmin;
+      await saveData(); render();
+    };
+
+    document.querySelectorAll('[data-fin-marcar-atraso]').forEach(el=> el.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
+      const a = associacaoAtual();
+      const pid = el.dataset.finMarcarAtraso;
+      const mesKey = mesAtualKey();
+      a.pagamentosMensalidade = a.pagamentosMensalidade || {};
+      a.pagamentosMensalidade[mesKey] = a.pagamentosMensalidade[mesKey] || {};
+      a.pagamentosMensalidade[mesKey][pid] = { pago:false, data:null };
+      a.transacoes = (a.transacoes||[]).filter(t=> !(t.jogadorId===pid && finMesKey(t.data)===mesKey && t.natureza==='recebimento'));
+      await saveData(); showToast('Marcado em atraso.'); render();
+    });
+    document.querySelectorAll('[data-fin-dar-baixa]').forEach(el=> el.onclick = ()=>{
+      if(!souAdminAssoc()) return;
+      ui.finBaixaJogadorId = el.dataset.finDarBaixa; ui.draftBaixa=null; ui.modal='dar-baixa'; render();
+    });
+    if(ui.modal==='dar-baixa' && ui.draftBaixa){
+      const d = ui.draftBaixa;
+      const bxValor = document.getElementById('bx-valor'); if(bxValor) bxValor.oninput = e=>{ d.valor = e.target.value; render(); };
+      const bxDescricao = document.getElementById('bx-descricao'); if(bxDescricao) bxDescricao.oninput = e=>{ d.descricao = e.target.value; };
+      const bxData = document.getElementById('bx-data'); if(bxData) bxData.oninput = e=>{ d.data = e.target.value; };
+      const confirmarBaixaBtn = document.querySelector('[data-action="confirmar-dar-baixa"]');
+      if(confirmarBaixaBtn) confirmarBaixaBtn.onclick = async ()=>{
+        if(!souAdminAssoc()) return;
+        const a = associacaoAtual(); a.transacoes = a.transacoes||[]; a.pagamentosMensalidade = a.pagamentosMensalidade||{};
+        const pid = ui.finBaixaJogadorId;
+        const mesKey = mesAtualKey();
+        const valor = parseFloat(d.valor)||0;
+        a.transacoes.push({ id: uid(), natureza:'recebimento', categoria:'Mensalidade', valor,
+          descricao: d.descricao || mesLabel(mesKey), data: d.data, jogadorId: pid, criadoPor: me, criadoEm: new Date().toISOString() });
+        a.pagamentosMensalidade[mesKey] = a.pagamentosMensalidade[mesKey] || {};
+        a.pagamentosMensalidade[mesKey][pid] = { pago:true, data: d.data };
+        ui.modal=null; ui.draftBaixa=null; ui.finBaixaJogadorId=null;
+        await saveData(); showToast('Baixa dada!'); render();
+      };
+    }
 
     const editarFinConfigBtn = document.querySelector('[data-action="editar-fin-config"]');
     if(editarFinConfigBtn) editarFinConfigBtn.onclick = ()=>{
