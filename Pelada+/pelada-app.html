@@ -1288,11 +1288,10 @@ function traduzErroAuth(e){
   function renderNav(){
     const items = [
       {k:'home', ic:'🏟️', label:'Lobby'},
-      {k:'jogadores', ic:'👤', label:'Jogadores'},
       {k:'financeiro', ic:'💰', label:'Financeiro'},
       {k:'grupos', ic:'⚽', label:'Fut'},
       {k:'resenha', ic:'📰', label:'Resenha'},
-      {k:'perfil', ic:'⚙️', label:'Config'},
+      {k:'perfil', ic:'⚙️', label:'Configurações'},
     ];
     return `<div class="nav">
       ${items.map(i=>`<button class="nav-item ${view===i.k?'active':''}" data-nav="${i.k}"><span class="ic">${i.ic}</span>${i.label}</button>`).join('')}
@@ -1302,7 +1301,6 @@ function traduzErroAuth(e){
   function renderView(){
     switch(view){
       case 'home': return renderHome();
-      case 'jogadores': return renderAssocJogadores();
       case 'grupos': return renderGrupos();
       case 'grupo-detalhe': return renderGrupoDetalhe();
       case 'financeiro': return renderFinanceiro();
@@ -2914,21 +2912,47 @@ function traduzErroAuth(e){
     if(sub==='emergencia') return renderConfigEmergencia();
     if(sub==='login') return renderConfigLogin();
     if(sub==='permissoes') return renderConfigPermissoes();
+    if(sub==='jogadores') return renderConfigJogadoresTab();
+    if(sub==='fut') return renderFutAjustesRoot();
+    return renderConfigRootHub();
+  }
+  function renderConfigRootHub(){
+    const a = associacaoAtual();
     const temFut = data.groups.some(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
-    if(!temFut) return renderConfigPessoalHub();
-    return renderFutAjustesRoot();
+    return `
+      <h1 class="page-title">⚙️ Configurações</h1>
+      ${a ? `
+      <div class="card tight row">
+        <div><div style="font-size:13px;font-weight:700;">🏛️ ${a.name}</div><div class="meta">associação atual</div></div>
+        <button class="btn btn-ghost btn-sm" data-action="trocar-associacao">Trocar</button>
+      </div>` : ''}
+      <div class="card">
+        <div class="list-row" data-open-config="pessoal" style="cursor:pointer;">
+          <div class="name" style="flex:1;">🙋 Meu perfil</div><div class="meta">›</div>
+        </div>
+        <div class="list-row" data-open-config="jogadores" style="cursor:pointer;">
+          <div class="name" style="flex:1;">👤 Jogadores</div><div class="meta">›</div>
+        </div>
+        ${temFut ? `
+        <div class="list-row" data-open-config="fut" style="cursor:pointer;">
+          <div class="name" style="flex:1;">🏟️ Ajustes do Fut</div><div class="meta">›</div>
+        </div>` : ''}
+      </div>
+      <button class="btn btn-ghost btn-block" style="margin-top:16px;" data-action="logout">Sair</button>
+    `;
+  }
+  function renderConfigJogadoresTab(){
+    return `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` + renderAssocJogadores();
   }
   function renderFutAjustesRoot(){
     const fut = data.groups.find(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
     if(!fut){
       return renderConfigPessoalHub();
     }
-    const cabecalho = !ui.futConfigSub ? `<h1 class="page-title">🏟️ ${fut.name}</h1><p class="lead">Ajustes do Fut</p>` : '';
+    const cabecalho = !ui.futConfigSub ? `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button><h1 class="page-title">🏟️ ${fut.name}</h1><p class="lead">Ajustes do Fut</p>` : '';
     return cabecalho + renderGrupoTabConfig(fut);
   }
   function renderConfigPessoalHub(){
-    const a = associacaoAtual();
-    const temFut = data.groups.some(gr=>gr.associacaoId===associacaoId && gr.memberIds.includes(me));
     const items = [
       {key:'jogador', icon:'👤', label:'Dados do jogador'},
       {key:'pessoais', icon:'📋', label:'Dados pessoais'},
@@ -2937,14 +2961,8 @@ function traduzErroAuth(e){
       {key:'permissoes', icon:'🔔', label:'Permissões'},
     ];
     return `
-      ${temFut ? `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` : ''}
+      <button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>
       <h1 class="page-title">🙋 Meu perfil</h1>
-      ${!temFut ? `<div class="empty" style="padding:0 0 16px;text-align:left;"><span class="ball">🏟️</span>Você ainda não tem um Fut nessa associação.</div>` : ''}
-      ${a ? `
-      <div class="card tight row">
-        <div><div style="font-size:13px;font-weight:700;">🏛️ ${a.name}</div><div class="meta">associação atual</div></div>
-        <button class="btn btn-ghost btn-sm" data-action="trocar-associacao">Trocar</button>
-      </div>` : ''}
       <div class="card">
         <div class="list-row" data-open-config="desempenho" style="cursor:pointer;">
           <div class="name" style="flex:1;">📊 Performance</div><div class="meta">›</div>
