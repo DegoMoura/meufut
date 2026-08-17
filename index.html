@@ -840,6 +840,7 @@ function traduzErroAuth(e){
             memberSince:{[me]: new Date().toISOString().slice(0,10)} };
           data.associacoes.push(a);
           associacaoId = a.id;
+          obterOuCriarFutPadrao();
           ui.assocScreen='list'; ui.draftAssoc=null; ui.assocStep=1;
           await saveData(); await saveMe();
           view='home'; showToast('Associação criada! Código: '+a.code); render();
