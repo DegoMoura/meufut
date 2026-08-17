@@ -375,6 +375,17 @@ function traduzErroAuth(e){
   function avgStars(p, campoTipo){
     const tipo = campoTipo || campoTipoAtual();
     const grupo = (p.starsByPosition && p.starsByPosition[tipo]) || {};
+    const souGoleiro = posicaoPrincipalPara(p, tipo)==='Goleiro';
+    if(souGoleiro){
+      // goleiro: a nota de goleiro pesa bem mais que as demais posições
+      const notaGoleiro = grupo['Goleiro']!=null ? grupo['Goleiro'] : 5;
+      const outras = Object.entries(grupo).filter(([pos])=>pos!=='Goleiro').map(([,val])=>val);
+      const mediaOutras = outras.length ? outras.reduce((a,b)=>a+b,0)/outras.length : notaGoleiro;
+      return (notaGoleiro*3 + mediaOutras)/4;
+    }
+    // jogador de linha: desconsidera a nota de goleiro
+    const linha = Object.entries(grupo).filter(([pos])=>pos!=='Goleiro').map(([,val])=>val);
+    if(linha.length) return linha.reduce((a,b)=>a+b,0)/linha.length;
     const v = Object.values(grupo);
     return v.length ? v.reduce((a,b)=>a+b,0)/v.length : 5;
   }
@@ -3551,16 +3562,22 @@ function traduzErroAuth(e){
           </div>
         </div>
       </div>
-      <div class="eyebrow" style="margin-top:16px;">Notas por posição — ${tipoAtual}</div>
-      <p class="lead" style="margin:2px 0 6px;">Toque nas estrelas pra ajustar sua autoavaliação.</p>
-      <div class="card">
-        ${posicoesParaCampo(tipoAtual).map(pos=>`
-          <div class="pos-rate-row">
-            <div class="pos-name">${pos}${posicaoPrincipalPara(p,tipoAtual)===pos?' 🔸':''}</div>
-            <div class="star-picker interactive">${starPickerHtml(pos, estrelasPara(p,tipoAtual,pos), true, tipoAtual, p.id)}</div>
-            <div class="pos-val">${estrelasPara(p,tipoAtual,pos)}</div>
-          </div>`).join('')}
-      </div>
+      ${CAMPO_TIPOS.map(tipo=>`
+        <div class="eyebrow" style="margin-top:16px;">Posição principal — ${tipo}</div>
+        <div class="card">
+          <div class="chip-row">${posicoesParaCampo(tipo).map(pos=>`<div class="chip ${posicaoPrincipalPara(p,tipo)===pos?'active':''}" data-pos-principal-pid="${p.id}" data-pos-principal-campo="${tipo}" data-pos-principal-val="${pos}">${pos}</div>`).join('')}</div>
+        </div>
+        <div class="eyebrow" style="margin-top:10px;">Notas por posição — ${tipo}</div>
+        <p class="lead" style="margin:2px 0 6px;">Toque nas estrelas pra ajustar sua autoavaliação.</p>
+        <div class="card">
+          ${posicoesParaCampo(tipo).map(pos=>`
+            <div class="pos-rate-row">
+              <div class="pos-name">${pos}${posicaoPrincipalPara(p,tipo)===pos?' 🔸':''}</div>
+              <div class="star-picker interactive">${starPickerHtml(pos, estrelasPara(p,tipo,pos), true, tipo, p.id)}</div>
+              <div class="pos-val">${estrelasPara(p,tipo,pos)}</div>
+            </div>`).join('')}
+        </div>
+      `).join('')}
       <div class="eyebrow" style="margin-top:16px;">Informações do jogador</div>
       ${renderConfigJogadorInfoForm(p)}
       <div class="eyebrow" style="margin-top:16px;">Meus Futs</div>
@@ -4169,6 +4186,13 @@ function traduzErroAuth(e){
       pl.starsByPosition[campo][pos] = val;
       const gAtual = groupById(ui.groupId);
       if(gAtual) logAtividade(gAtual, `classificou ${pl.name} (${pos} ${campo}: ${val}⭐)`);
+      await saveData(); render();
+    });
+    document.querySelectorAll('[data-pos-principal-pid]').forEach(el=> el.onclick = async ()=>{
+      const pid = el.dataset.posPrincipalPid, campo = el.dataset.posPrincipalCampo, val = el.dataset.posPrincipalVal;
+      const pl = playerById(pid);
+      pl.posicaoPrincipal = pl.posicaoPrincipal || {};
+      pl.posicaoPrincipal[campo] = val;
       await saveData(); render();
     });
 
