@@ -165,6 +165,17 @@ function traduzErroAuth(e){
     return posicaoPrincipalPara(p, a ? a.campoTipo : 'Campo');
   }
   function matchRating(m,p){ return estrelasPara(p, campoTipoAtual(), matchPos(m,p)); }
+  // nota que o ADMIN do grupo já deu pra esse jogador em avaliações pós-jogo anteriores; sem histórico, cai pra estrela autodeclarada
+  function notaAdminJogador(g, playerId){
+    const notas = [];
+    data.matches.filter(mm=>mm.groupId===g.id && mm.avaliacoesFeitas && mm.avaliacoesFeitas[g.adminId]).forEach(mm=>{
+      const v = mm.avaliacoesFeitas[g.adminId][playerId];
+      if(v!=null) notas.push(v);
+    });
+    if(notas.length) return notas.reduce((a,b)=>a+b,0)/notas.length;
+    const pl = playerById(playerId);
+    return pl ? estrelasPara(pl, campoTipoAtual(), posicaoPrincipalPara(pl, campoTipoAtual())) : 5;
+  }
 
   function computeFormation(n, posicoesLinha){
     const k = posicoesLinha.length;
@@ -2282,6 +2293,77 @@ function traduzErroAuth(e){
     times.forEach(t=> t.sort((a,b)=> ordemPos.indexOf(matchPos(m,playerById(a))) - ordemPos.indexOf(matchPos(m,playerById(b)))));
     return { times, reservas: poolLinha.slice(idx).map(p=>p.id) };
   }
+
+  // Sorteio configurável (tela "Sortear times"): número de times livre + prioridades ligáveis/desligáveis
+  function defaultSorteioConfig(baseIds, m, g){
+    const linhaCap = m.maxJogadores || g.maxPlayers || 20;
+    const golCap = m.maxGoleiros || 0;
+    const tamanhoAlvo = golCap>0 ? Math.max(2, Math.round(linhaCap/golCap)+1) : Math.max(2, Math.floor(linhaCap/2));
+    const numTimes = Math.max(2, Math.round((baseIds.length||tamanhoAlvo) / Math.max(2,tamanhoAlvo)));
+    return {
+      numTimes, priorizarMensalistas: true, equilibrarPosicao: true, separarCraques: false,
+      equilibrarNota: true, notaDoAdmin: false, goleiroFixo: false
+    };
+  }
+  function sortearTimesComConfig(ids, m, cfg){
+    const a = associacaoAtual();
+    const g = groupById(m.groupId);
+    const tipoCampo = a ? a.campoTipo : 'Campo';
+    const ordemPos = posicoesParaCampo(tipoCampo);
+    const jogadores = ids.map(playerById).filter(Boolean);
+    const notaFn = cfg.notaDoAdmin ? (p=>notaAdminJogador(g, p.id)) : (p=>matchRating(m,p));
+    let numTimes = Math.max(1, Math.min(Math.floor(cfg.numTimes)||2, Math.max(1,jogadores.length)));
+
+    let goleiros = jogadores.filter(p=>matchPos(m,p)==='Goleiro').sort((x,y)=> notaFn(y)-notaFn(x));
+    let linha = jogadores.filter(p=>matchPos(m,p)!=='Goleiro');
+    if(cfg.goleiroFixo && goleiros.length>0){
+      numTimes = Math.min(numTimes, goleiros.length);
+    } else {
+      while(goleiros.length < numTimes && linha.length){
+        linha.sort((x,y)=> estrelasPara(y,tipoCampo,'Goleiro') - estrelasPara(x,tipoCampo,'Goleiro'));
+        goleiros.push(linha.shift());
+      }
+    }
+    if(numTimes < 1) return { times: [], reservas: jogadores.map(p=>p.id) };
+    const golsExtras = goleiros.slice(numTimes).sort((x,y)=> notaFn(y)-notaFn(x));
+    goleiros = goleiros.slice(0, numTimes);
+
+    const ehDiarista = p => !!(cfg.priorizarMensalistas && a && (a.diaristas||[]).includes(p.id));
+    if(cfg.equilibrarPosicao){
+      linha.sort((x,y)=>{
+        const dif = (ehDiarista(x)?1:0) - (ehDiarista(y)?1:0);
+        if(dif!==0) return dif;
+        const pa = ordemPos.indexOf(matchPos(m,x)), pb = ordemPos.indexOf(matchPos(m,y));
+        if(pa!==pb) return pa-pb;
+        return (cfg.equilibrarNota || cfg.notaDoAdmin) ? notaFn(y)-notaFn(x) : 0;
+      });
+    } else {
+      linha.sort((x,y)=>{
+        const dif = (ehDiarista(x)?1:0) - (ehDiarista(y)?1:0);
+        if(dif!==0) return dif;
+        return (cfg.equilibrarNota || cfg.notaDoAdmin) ? notaFn(y)-notaFn(x) : 0;
+      });
+    }
+    const poolLinha = [...linha, ...golsExtras];
+    const times = goleiros.map(gk=>[gk.id]);
+    let poolRestante = poolLinha;
+    if(cfg.separarCraques && poolLinha.length && numTimes>1){
+      const craques = [...poolLinha].sort((x,y)=> notaFn(y)-notaFn(x)).slice(0, numTimes);
+      const craqueIds = new Set(craques.map(c=>c.id));
+      craques.forEach((cr,i)=>{ if(times[i]) times[i].push(cr.id); });
+      poolRestante = poolLinha.filter(p=>!craqueIds.has(p.id));
+    }
+    const tamanho = Math.max(1, Math.floor(jogadores.length / numTimes));
+    let idx=0, timeAtual=0, sentido=1;
+    while(idx<poolRestante.length && times.some(t=>t.length<tamanho)){
+      if(times[timeAtual].length < tamanho){ times[timeAtual].push(poolRestante[idx].id); idx++; }
+      timeAtual += sentido;
+      if(timeAtual>=numTimes){ timeAtual=numTimes-1; sentido=-1; }
+      else if(timeAtual<0){ timeAtual=0; sentido=1; }
+    }
+    times.forEach(t=> t.sort((x,y)=> ordemPos.indexOf(matchPos(m,playerById(x))) - ordemPos.indexOf(matchPos(m,playerById(y)))));
+    return { times, reservas: poolRestante.slice(idx).map(p=>p.id) };
+  }
   function fmtTimer(ms){
     const total = Math.max(0, Math.floor(ms/1000));
     const mm = String(Math.floor(total/60)).padStart(2,'0');
@@ -2333,6 +2415,7 @@ function traduzErroAuth(e){
       ${ui.menuPartidaAberto ? renderMenuPartida(m,g) : ''}
       ${ui.modal==='adicionar-convidado' ? renderModalAdicionarConvidado(m,g) : ''}
       ${ui.modal==='alterar-pelada' ? renderModalAlterarPelada(m,g) : ''}
+      ${ui.modal==='config-sorteio' ? renderModalConfigSorteio(m,g) : ''}
       ${tab==='confirmacoes' ? renderTabConfirmacoes(m,g) :
         tab==='partida' ? renderTabPartidaSequencial(m,g) :
         renderTabAvaliacoes(m,g)}
@@ -2399,6 +2482,39 @@ function traduzErroAuth(e){
           <div style="flex:1;"><label>Hora limite</label><input id="alt-limite-hora" type="time" value="${d.limiteHora}"></div>
         </div>
         <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="salvar-alterar-pelada">Salvar</button>
+      </div></div>
+    `;
+  }
+  function renderModalConfigSorteio(m,g){
+    m.chegadas = m.chegadas || {};
+    const chegaramIds = m.confirmed.filter(id=>m.chegadas[id]);
+    const baseIds = chegaramIds.length>0 ? chegaramIds : m.confirmed;
+    if(!ui.draftSorteioConfig){
+      ui.draftSorteioConfig = Object.assign(defaultSorteioConfig(baseIds, m, g), g.sorteioConfig||{});
+    }
+    const d = ui.draftSorteioConfig;
+    const toggle = (key, label, desc) => `
+      <div class="row" style="justify-content:space-between;align-items:center;margin-top:14px;gap:10px;">
+        <div style="flex:1;">
+          <div class="name">${label}</div>
+          ${desc?`<div class="meta">${desc}</div>`:''}
+        </div>
+        <button class="btn btn-sm ${d[key]?'btn-gold':'btn-ghost'}" data-draft-sorteio-toggle="${key}" style="flex-shrink:0;">${d[key]?'Ativado':'Desativado'}</button>
+      </div>`;
+    return `
+      <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:22px;">⚡ Sortear times</h1>
+        <p class="lead">${baseIds.length} jogador${baseIds.length===1?'':'es'} na base${chegaramIds.length>0?' (quem já chegou)':' — ninguém marcou chegada ainda, então vamos usar os confirmados'}.</p>
+        <label>Número de times</label>
+        <input id="sorteio-num-times" type="number" min="2" max="12" value="${d.numTimes}">
+        ${toggle('priorizarMensalistas','Priorizar mensalistas','Mensalistas têm prioridade sobre convidados e diaristas na primeira partida (RECOMENDADO)')}
+        ${toggle('equilibrarPosicao','Equilibrar por posição','Equilibra os times pela posição dos jogadores (RECOMENDADO)')}
+        ${toggle('separarCraques','Separar os craques','Espalha os jogadores mais bem avaliados, um em cada time')}
+        ${toggle('equilibrarNota','Equilibrar por nota','Equilibra os times usando as notas de todos os jogadores do grupo (RECOMENDADO)')}
+        ${toggle('notaDoAdmin','Equilibrar por notas do admin','Equilibra os times usando só as notas que o admin já deu pra cada jogador')}
+        ${toggle('goleiroFixo','Goleiro fixo','Se marcar, não completamos os times com jogador de linha caso não tenha goleiro suficiente')}
+        <button class="btn btn-gold btn-block" style="margin-top:20px;" data-action="confirmar-sorteio" ${baseIds.length<2?'disabled style="opacity:.5"':''}>Sortear times</button>
       </div></div>
     `;
   }
@@ -2534,58 +2650,130 @@ function traduzErroAuth(e){
 
   function renderTabChegadas(m,g){
     m.chegadas = m.chegadas || {};
-    const confirmedPlayers = m.confirmed.map(playerById).filter(Boolean);
     const souAdmin = g.adminId===me;
-    const chegaram = confirmedPlayers.filter(pl=>m.chegadas[pl.id]).length;
+    const tsChegada = pid => typeof m.chegadas[pid]==='number' ? m.chegadas[pid] : null;
+    const confirmedPlayers = m.confirmed.map(playerById).filter(Boolean);
+    const chegaram = confirmedPlayers.filter(pl=>m.chegadas[pl.id])
+      .sort((a,b)=> (tsChegada(a.id)||0)-(tsChegada(b.id)||0));
+    const confirmaram = confirmedPlayers.filter(pl=>!m.chegadas[pl.id]);
+    const naoConfirmaram = g.memberIds.map(playerById).filter(Boolean)
+      .filter(pl=> !m.confirmed.includes(pl.id) && !m.chegadas[pl.id]);
+    const linha = (pl, opts) => {
+      const podeMarcar = souAdmin || pl.id===me;
+      return `
+      <div class="list-row">
+        ${opts.numero!=null ? `<div class="jersey" style="width:28px;height:28px;font-size:12px;">${opts.numero}</div>` : ''}
+        <div style="flex:1;">
+          <div class="name">${pl.name}</div>
+          ${opts.ts ? `<div class="meta">${new Date(opts.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>` : ''}
+        </div>
+        ${podeMarcar
+          ? `<button class="icon-btn" ${opts.walkin?`data-checkin-walkin="${pl.id}"`:`data-toggle-chegada="${pl.id}"`} title="${opts.marcado?'Desfazer chegada':'Marcar chegada'}">${opts.marcado?'✕':'✓'}</button>`
+          : `<span class="badge ${opts.marcado?'badge-done':'badge-open'}">${opts.marcado?'Chegou':'Aguardando'}</span>`}
+      </div>`;
+    };
     return `
-      <p class="lead">Marque quem já chegou pra dividir os times. ${chegaram}/${confirmedPlayers.length} chegaram.</p>
-      <div class="card">
-        ${confirmedPlayers.length===0 ? `<p class="lead" style="margin:0;">Ninguém confirmado ainda.</p>` :
-          confirmedPlayers.map(pl=>{
-            const chegou = !!m.chegadas[pl.id];
-            const podeMarcar = souAdmin || pl.id===me;
-            return `
-            <div class="list-row">
-              <div class="jersey" style="width:32px;height:32px;font-size:12px;">${chegou?'📍':'⏳'}</div>
-              <div class="name" style="flex:1;">${pl.name}</div>
-              ${podeMarcar
-                ? `<button class="btn btn-sm ${chegou?'btn-ghost':'btn-gold'}" data-toggle-chegada="${pl.id}">${chegou?'Desfazer':'Cheguei'}</button>`
-                : `<span class="badge ${chegou?'badge-done':'badge-open'}">${chegou?'Chegou':'Aguardando'}</span>`}
-            </div>`;
-          }).join('')}
+      <div class="card" style="margin-bottom:14px;background:rgba(76,134,199,.1);border-color:rgba(76,134,199,.3);">
+        <p class="lead" style="margin:0;">Marque quem chegou tocando no ✓. A ordem de chegada é usada pra priorizar jogadores no sorteio de times.</p>
       </div>
+
+      <div class="eyebrow" style="margin-top:4px;">Chegaram (${chegaram.length})</div>
+      <div class="card">
+        ${chegaram.length===0 ? `<p class="lead" style="margin:0;">Ninguém chegou ainda.</p>` :
+          chegaram.map((pl,i)=> linha(pl, {numero:i+1, ts:tsChegada(pl.id), marcado:true})).join('')}
+      </div>
+
+      <div class="eyebrow" style="margin-top:14px;">Confirmaram (${confirmaram.length})</div>
+      <div class="card">
+        ${confirmaram.length===0 ? `<p class="lead" style="margin:0;">Todo mundo que confirmou já chegou.</p>` :
+          confirmaram.map(pl=> linha(pl, {marcado:false})).join('')}
+      </div>
+
+      ${naoConfirmaram.length>0 ? `
+      <div class="eyebrow" style="margin-top:14px;">Não confirmaram (${naoConfirmaram.length})</div>
+      <div class="card">
+        ${naoConfirmaram.map(pl=> linha(pl, {marcado:false, walkin:true})).join('')}
+      </div>` : ''}
     `;
   }
 
+  function renderLobbyActionBar(sel){
+    const pl = playerById(sel.pid);
+    return `
+      <div class="card" style="margin-bottom:14px;border-color:var(--gold);">
+        <div class="eyebrow" style="margin-bottom:8px;">${pl?pl.name:''} selecionado</div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-ghost" data-action="lobby-mudar-time" style="flex:1;min-width:90px;">🔁 Time</button>
+          <button class="btn btn-sm btn-ghost" data-action="lobby-trocar" style="flex:1;min-width:90px;">🔀 Trocar</button>
+          <button class="btn btn-sm btn-ghost" data-action="lobby-parou" style="flex:1;min-width:90px;">🚫 Parou</button>
+          <button class="btn btn-sm btn-ghost" data-action="lobby-nao-chegou" style="flex:1;min-width:90px;">❌ Não chegou</button>
+        </div>
+        ${ui.lobbyTroca ? `<p class="lead" style="margin:8px 0 0;color:var(--gold);">Toque em outro jogador pra completar a troca.</p>` : ''}
+      </div>
+    `;
+  }
   function renderTabTimes(m,g){
     m.chegadas = m.chegadas || {};
     const chegaramIds = m.confirmed.filter(id=>m.chegadas[id]);
     const baseIds = chegaramIds.length>0 ? chegaramIds : m.confirmed;
+    const souAdmin = g.adminId===me;
     if(!m.times){
       return `
         <div class="card">
           <div class="eyebrow">Sorteio de times</div>
-          <p class="lead" style="margin:6px 0 12px;">Equilibra os times pela nota (⭐) de cada jogador na posição escolhida hoje. ${chegaramIds.length>0?`Usando os ${chegaramIds.length} que já chegaram.`:'Ninguém marcou chegada ainda — o sorteio vai usar os confirmados.'}</p>
-          <button class="btn btn-gold btn-block" data-action="sortear" ${baseIds.length<2?'disabled style="opacity:.5"':''}>⚡ Sortear times</button>
+          <p class="lead" style="margin:6px 0 12px;">${chegaramIds.length>0?`Usando os ${chegaramIds.length} que já chegaram.`:'Ninguém marcou chegada ainda — o sorteio vai usar os confirmados.'}</p>
+          <button class="btn btn-gold btn-block" data-action="abrir-config-sorteio" ${baseIds.length<2?'disabled style="opacity:.5"':''}>⚡ Sortear times</button>
         </div>
       `;
     }
-    return `
-      ${m.times.map((jogadoresIds,idx)=>{
-        const emCampo = idx===m.timeA || idx===m.timeB;
-        const cor = corTime(idx);
-        const jogadores = jogadoresIds.map(playerById).filter(Boolean);
-        return `
-        <div class="eyebrow" style="margin-top:14px;color:${cor};">Time ${idx+1} ${emCampo?'· 🟢 Em campo':'· ⏳ Fila'}</div>
-        <div class="card">
-          ${jogadores.map(pl=>`
-            <div class="list-row">
-              <div class="jersey" style="width:32px;height:32px;font-size:12px;border-color:${cor};color:${cor};">⭐${matchRating(m,pl)}</div>
-              <div class="name">${pl.name}</div>
-            </div>`).join('')}
+    const podeMexer = souAdmin && m.status!=='finalizada';
+    const sel = ui.lobbySel;
+    const jogadorTag = (pid, timeIdx, cor, semBorda) => {
+      const pl = playerById(pid); if(!pl) return '<div></div>';
+      const selecionado = !!(sel && sel.pid===pid);
+      const estilo = `${semBorda?'border-bottom:none;':''}${selecionado?'background:rgba(228,185,76,.14);border-radius:10px;':''}${podeMexer?'cursor:pointer;':''}`;
+      return `
+        <div class="list-row" style="${estilo}" ${podeMexer?`data-lobby-tap="${timeIdx}|${pid}" role="button" tabindex="0"`:''}>
+          <div class="jersey" style="width:30px;height:30px;font-size:11px;border-color:${cor};color:${cor};">⭐${matchRating(m,pl)}</div>
+          <div class="name" style="font-size:12.5px;">${pl.name}</div>
+          ${selecionado?'<div style="color:var(--gold);">●</div>':''}
         </div>`;
-      }).join('')}
-      ${m.status!=='finalizada' ? `<button class="btn btn-ghost btn-block" style="margin-top:10px;" data-action="sortear">🔄 Sortear de novo</button>` : ''}
+    };
+    const timeA = m.timeA, timeB = m.timeB;
+    const rosterA = m.times[timeA] || [];
+    const rosterB = timeB!=null ? (m.times[timeB] || []) : [];
+    const corA = corTime(timeA), corB = timeB!=null ? corTime(timeB) : null;
+    const linhas = Math.max(rosterA.length, rosterB.length);
+    let vsRows = '';
+    for(let i=0;i<linhas;i++){
+      vsRows += `<div class="lobby-vs-row">
+        <div>${rosterA[i]?jogadorTag(rosterA[i], timeA, corA, true):''}</div>
+        <div>${rosterB[i]?jogadorTag(rosterB[i], timeB, corB, true):''}</div>
+      </div>`;
+    }
+    const filaTimes = (m.filaIdx||[]).map(idx=>{
+      const cor = corTime(idx);
+      const roster = m.times[idx] || [];
+      return `
+        <div class="eyebrow" style="margin-top:16px;color:${cor};">Time ${idx+1} <span style="color:var(--ink-dim);font-weight:600;">· Próximo a jogar</span></div>
+        <div class="card">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}</div>
+      `;
+    }).join('');
+    return `
+      <p class="lead" style="text-align:center;margin-bottom:10px;">Nº de sorteios: ${m.numSorteios||1}</p>
+      ${podeMexer ? `<button class="btn btn-gold btn-block" style="margin-bottom:14px;" data-action="ir-ao-vivo">Iniciar partida</button>` : ''}
+      ${sel ? renderLobbyActionBar(sel) : ''}
+      <div class="row" style="margin-bottom:2px;">
+        <div style="flex:1;text-align:center;color:${corA};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">TIME ${timeA+1}</div>
+        ${timeB!=null?`<div style="flex:1;text-align:center;color:${corB};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">TIME ${timeB+1}</div>`:''}
+      </div>
+      <div class="card">${vsRows}</div>
+      ${filaTimes}
+      ${m.status!=='finalizada' ? `
+        <div class="row" style="gap:8px;margin-top:14px;">
+          <button class="btn btn-ghost" style="flex:1;" data-action="abrir-config-sorteio">🔄 Sortear de novo</button>
+          <button class="btn btn-ghost" style="flex:1;" data-action="compartilhar-times">📤 Compartilhar</button>
+        </div>` : ''}
     `;
   }
 
@@ -3640,6 +3828,7 @@ function traduzErroAuth(e){
       ui.matchId = el.dataset.openMatch;
       const destino = m ? abaPadraoPartida(m, groupById(m.groupId)) : {tab:'confirmacoes'};
       ui.matchTab = destino.tab; ui.matchSubTab = destino.sub;
+      ui.lobbySel = null; ui.lobbyTroca = null;
       view='partida-detalhe'; render();
     });
     const rankModoSelect = document.getElementById('rank-modo-select');
@@ -4106,7 +4295,7 @@ function traduzErroAuth(e){
       await saveData(); showToast('Fut marcado! Confirmações abertas.'); render();
     };
 
-    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; ui.jogadorAcoesId=null; ui.draftTransacao=null; ui.draftCobranca=null; ui.draftBaixa=null; ui.finBaixaJogadorId=null; render(); } });
+    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; ui.jogadorAcoesId=null; ui.draftTransacao=null; ui.draftCobranca=null; ui.draftBaixa=null; ui.finBaixaJogadorId=null; ui.draftSorteioConfig=null; render(); } });
 
     // ---- Jogadores da associação ----
     const buscaAssocJogadorInput = document.getElementById('assoc-busca-jogador');
@@ -4409,7 +4598,7 @@ function traduzErroAuth(e){
       showToast('Chave PIX copiada!');
     };
     document.querySelectorAll('[data-mtab]').forEach(el=> el.onclick = ()=>{ ui.matchTab = el.dataset.mtab; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; render(); });
-    document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; render(); });
+    document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.lobbySel=null; ui.lobbyTroca=null; render(); });
     const continuarTimesBtn = document.querySelector('[data-action="continuar-times"]');
     if(continuarTimesBtn) continuarTimesBtn.onclick = ()=>{ ui.matchSubTab = 'times'; render(); };
 
@@ -4496,6 +4685,42 @@ function traduzErroAuth(e){
         logAtividade(g, 'alterou os dados da pelada');
         ui.modal=null; ui.draftAlterarPelada=null;
         await saveData(); showToast('Pelada atualizada!'); render();
+      };
+    }
+
+    // ---- Configurar e rodar o sorteio de times ----
+    if(ui.modal==='config-sorteio' && ui.draftSorteioConfig){
+      const d = ui.draftSorteioConfig;
+      const numTimesInput = document.getElementById('sorteio-num-times');
+      if(numTimesInput) numTimesInput.oninput = e=>{ d.numTimes = parseInt(e.target.value)||2; };
+      document.querySelectorAll('[data-draft-sorteio-toggle]').forEach(el=> el.onclick = ()=>{
+        const k = el.dataset.draftSorteioToggle;
+        d[k] = !d[k];
+        if(k==='equilibrarNota' && d[k]) d.notaDoAdmin = false;
+        if(k==='notaDoAdmin' && d[k]) d.equilibrarNota = false;
+        render();
+      });
+      const confirmarSorteioBtn = document.querySelector('[data-action="confirmar-sorteio"]');
+      if(confirmarSorteioBtn) confirmarSorteioBtn.onclick = async ()=>{
+        const m = matchById(ui.matchId); const g = groupById(m.groupId);
+        m.chegadas = m.chegadas || {};
+        const chegaramIds = m.confirmed.filter(id=>m.chegadas[id]);
+        const baseIds = chegaramIds.length>0 ? chegaramIds : m.confirmed;
+        const cfg = { numTimes:d.numTimes, priorizarMensalistas:d.priorizarMensalistas, equilibrarPosicao:d.equilibrarPosicao,
+          separarCraques:d.separarCraques, equilibrarNota:d.equilibrarNota, notaDoAdmin:d.notaDoAdmin, goleiroFixo:d.goleiroFixo };
+        const { times, reservas } = sortearTimesComConfig(baseIds, m, cfg);
+        m.times = times;
+        m.timeA = 0; m.timeB = times.length>1 ? 1 : null;
+        m.filaIdx = times.length>2 ? times.slice(2).map((_,i)=>i+2) : [];
+        m.placar = {A:0,B:0};
+        m.numSorteios = (m.numSorteios||0) + 1;
+        g.sorteioConfig = { ...cfg };
+        if(reservas.length) showToast(`Times sorteados! ${reservas.length} de reserva.`); else showToast('Times sorteados!');
+        m.status = 'sorteada';
+        ui.modal = null; ui.draftSorteioConfig = null;
+        ui.matchSubTab = 'times';
+        logAtividade(g, 'sorteou os times');
+        await saveData(); render();
       };
     }
 
@@ -4587,8 +4812,24 @@ function traduzErroAuth(e){
       const m = matchById(ui.matchId);
       const pid = el.dataset.toggleChegada;
       m.chegadas = m.chegadas || {};
-      m.chegadas[pid] = !m.chegadas[pid];
+      if(m.chegadas[pid]) delete m.chegadas[pid]; else m.chegadas[pid] = Date.now();
       await saveData(); render();
+    });
+
+    document.querySelectorAll('[data-checkin-walkin]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId); const g = groupById(m.groupId);
+      const pid = el.dataset.checkinWalkin;
+      m.chegadas = m.chegadas || {};
+      m.confirmadoEm = m.confirmadoEm || {};
+      if(!m.confirmed.includes(pid)){
+        m.confirmed.push(pid);
+        m.confirmadoEm[pid] = new Date().toISOString();
+      }
+      m.declined = (m.declined||[]).filter(id=>id!==pid);
+      m.waitlist = (m.waitlist||[]).filter(id=>id!==pid);
+      m.chegadas[pid] = Date.now();
+      logAtividade(g, `marcou ${playerById(pid).name} como chegou sem confirmação prévia`);
+      await saveData(); showToast('Chegada registrada!'); render();
     });
 
     document.querySelectorAll('[data-toggle-presenca-aval]').forEach(el=> el.onclick = async ()=>{
@@ -4599,26 +4840,90 @@ function traduzErroAuth(e){
       await saveData(); showToast('Presença atualizada.'); render();
     });
 
-    const sortearBtn = document.querySelector('[data-action="sortear"]');
-    if(sortearBtn) sortearBtn.onclick = async ()=>{
+    const abrirConfigSorteioBtn = document.querySelector('[data-action="abrir-config-sorteio"]');
+    if(abrirConfigSorteioBtn) abrirConfigSorteioBtn.onclick = ()=>{ ui.draftSorteioConfig=null; ui.modal='config-sorteio'; render(); };
+
+    const irAoVivoBtn = document.querySelector('[data-action="ir-ao-vivo"]');
+    if(irAoVivoBtn) irAoVivoBtn.onclick = ()=>{ ui.matchSubTab='acoes'; ui.lobbySel=null; ui.lobbyTroca=null; render(); };
+
+    const compartilharTimesBtn = document.querySelector('[data-action="compartilhar-times"]');
+    if(compartilharTimesBtn) compartilharTimesBtn.onclick = ()=>{
       const m = matchById(ui.matchId); const g = groupById(m.groupId);
-      m.chegadas = m.chegadas || {};
-      const chegaramIds = m.confirmed.filter(id=>m.chegadas[id]);
-      const baseIds = chegaramIds.length>0 ? chegaramIds : m.confirmed;
-      const linhaCap = m.maxJogadores || g.maxPlayers;
-      const golCap = m.maxGoleiros || 0;
-      const tamanhoAlvo = golCap>0 ? Math.max(2, Math.round(linhaCap/golCap)+1) : Math.max(2, Math.floor(linhaCap/2));
-      const tamanho = Math.min(tamanhoAlvo, Math.floor(baseIds.length/2) || 1);
-      const { times, reservas } = sortearComFila(baseIds, m, tamanho);
-      m.times = times;
-      m.timeA = 0; m.timeB = times.length>1 ? 1 : null;
-      m.filaIdx = times.length>2 ? times.slice(2).map((_,i)=>i+2) : [];
-      m.placar = {A:0,B:0};
-      if(reservas.length) showToast(`Times sorteados! ${reservas.length} de reserva.`); else showToast('Times sorteados!');
-      m.status = 'sorteada';
-      ui.matchSubTab = 'acoes';
-      logAtividade(g, 'sorteou os times');
-      await saveData(); render();
+      let texto = `⚽ Times da pelada — ${g.name} (${fmtDate(m.date)}):\n\n`;
+      m.times.forEach((ids,idx)=>{
+        texto += `Time ${idx+1}:\n`;
+        ids.map(playerById).filter(Boolean).forEach(pl=>{ texto += `- ${pl.name} (${matchPos(m,pl)})\n`; });
+        texto += '\n';
+      });
+      if(navigator.clipboard) navigator.clipboard.writeText(texto).catch(()=>{});
+      showToast('Times copiados! Cole no WhatsApp do grupo.');
+    };
+
+    document.querySelectorAll('[data-lobby-tap]').forEach(el=> el.onclick = async ()=>{
+      const [timeIdxStr, pid] = el.dataset.lobbyTap.split('|');
+      const timeIdx = parseInt(timeIdxStr);
+      const m = matchById(ui.matchId);
+      if(ui.lobbyTroca){
+        if(ui.lobbyTroca.pid === pid){ ui.lobbyTroca=null; render(); return; }
+        const origem = ui.lobbyTroca;
+        const arrOrigem = m.times[origem.timeIdx];
+        const arrDestino = m.times[timeIdx];
+        const iOrigem = arrOrigem.indexOf(origem.pid);
+        const iDestino = arrDestino.indexOf(pid);
+        if(iOrigem>=0 && iDestino>=0){
+          if(origem.timeIdx===timeIdx){ arrOrigem[iOrigem]=pid; arrOrigem[iDestino]=origem.pid; }
+          else { arrOrigem[iOrigem]=pid; arrDestino[iDestino]=origem.pid; }
+        }
+        ui.lobbyTroca = null; ui.lobbySel = null;
+        logAtividade(groupById(m.groupId), 'trocou jogadores entre times');
+        await saveData(); showToast('Troca feita!'); render();
+        return;
+      }
+      ui.lobbySel = (ui.lobbySel && ui.lobbySel.pid===pid) ? null : {timeIdx, pid};
+      render();
+    });
+
+    const lobbyMudarBtn = document.querySelector('[data-action="lobby-mudar-time"]');
+    if(lobbyMudarBtn) lobbyMudarBtn.onclick = async ()=>{
+      const m = matchById(ui.matchId); const sel = ui.lobbySel; if(!sel) return;
+      const atual = m.times[sel.timeIdx];
+      const i = atual.indexOf(sel.pid);
+      if(i>=0) atual.splice(i,1);
+      const proximo = (sel.timeIdx+1) % m.times.length;
+      m.times[proximo].push(sel.pid);
+      ui.lobbySel = null;
+      await saveData(); showToast('Jogador movido de time.'); render();
+    };
+
+    const lobbyTrocarBtn = document.querySelector('[data-action="lobby-trocar"]');
+    if(lobbyTrocarBtn) lobbyTrocarBtn.onclick = ()=>{
+      if(ui.lobbySel) ui.lobbyTroca = {...ui.lobbySel};
+      render();
+    };
+
+    const lobbyParouBtn = document.querySelector('[data-action="lobby-parou"]');
+    if(lobbyParouBtn) lobbyParouBtn.onclick = async ()=>{
+      const m = matchById(ui.matchId); const sel = ui.lobbySel; if(!sel) return;
+      const atual = m.times[sel.timeIdx];
+      const i = atual.indexOf(sel.pid);
+      if(i>=0) atual.splice(i,1);
+      ui.lobbySel = null;
+      await saveData(); showToast('Jogador removido do time.'); render();
+    };
+
+    const lobbyNaoChegouBtn = document.querySelector('[data-action="lobby-nao-chegou"]');
+    if(lobbyNaoChegouBtn) lobbyNaoChegouBtn.onclick = async ()=>{
+      const m = matchById(ui.matchId); const g = groupById(m.groupId); const sel = ui.lobbySel; if(!sel) return;
+      const atual = m.times[sel.timeIdx];
+      const i = atual.indexOf(sel.pid);
+      if(i>=0) atual.splice(i,1);
+      m.confirmed = m.confirmed.filter(id=>id!==sel.pid);
+      m.declined = m.declined || [];
+      if(!m.declined.includes(sel.pid)) m.declined.push(sel.pid);
+      if(m.chegadas) delete m.chegadas[sel.pid];
+      ui.lobbySel = null;
+      logAtividade(g, `marcou ${playerById(sel.pid).name} como não chegou`);
+      await saveData(); showToast('Marcado como ausente.'); render();
     };
 
     document.querySelectorAll('[data-toggle-resultado]').forEach(el=> el.onclick = ()=>{
