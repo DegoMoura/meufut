@@ -1,12 +1,15 @@
-# Pelada+
+# MeuFut
 
 App web (HTML/CSS/JS em arquivo único) para organizar peladas de futebol: montagem de times, controle de jogadores e placar.
+
+Site oficial: [meufut.app](https://meufut.app) · Contato: contato@meufut.app
 
 ## Estrutura
 
 ```
 Pelada+/
-  pelada-app.html   # aplicativo completo (HTML + CSS + JS inline)
+  pelada-app.html   # aplicativo completo (HTML + JS inline)
+  style.css         # estilos do app
 ```
 
 ## Como rodar

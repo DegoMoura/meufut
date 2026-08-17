@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>Pelada+</title>
+<title>MeuFut</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -407,7 +407,7 @@ function traduzErroAuth(e){
   function renderLogin(){
     return `
       <div class="app"><div class="content" style="padding-top:60px;">
-        <div class="brand"><span class="ball">⚽</span> PELADA<span style="color:var(--gold)">+</span></div>
+        <div class="brand"><span class="ball">⚽</span> MEU<span style="color:var(--gold)">FUT</span></div>
         <div class="brand-sub">app da associação</div>
         <div class="eyebrow" style="margin-top:30px;">Entrar</div>
         <h1 class="page-title">Bem-vindo</h1>
@@ -472,7 +472,7 @@ function traduzErroAuth(e){
     const email = (auth.currentUser && auth.currentUser.email) || '';
     return `
       <div class="app"><div class="content" style="padding-top:60px;">
-        <div class="brand"><span class="ball">⚽</span> PELADA<span style="color:var(--gold)">+</span></div>
+        <div class="brand"><span class="ball">⚽</span> MEU<span style="color:var(--gold)">FUT</span></div>
         <div class="brand-sub">app da associação</div>
         <div class="eyebrow" style="margin-top:30px;">Confirme seu e-mail</div>
         <h1 class="page-title">Quase lá</h1>
@@ -508,7 +508,7 @@ function traduzErroAuth(e){
     const minhas = myAssociacoes();
     return `
       <div class="app"><div class="content" style="padding-top:44px;">
-        <div class="brand" style="margin-bottom:2px;"><span class="ball">⚽</span> PELADA<span style="color:var(--gold)">+</span></div>
+        <div class="brand" style="margin-bottom:2px;"><span class="ball">⚽</span> MEU<span style="color:var(--gold)">FUT</span></div>
         <div class="brand-sub" style="margin-bottom:18px;">app da associação</div>
         <div class="row" style="gap:10px;margin-bottom:20px;">
           <button class="btn btn-ghost" style="flex:1;" data-goto="perfil">🙋 Meu perfil</button>
@@ -892,7 +892,7 @@ function traduzErroAuth(e){
   function renderOnboardingStep1(d){
     return `
       <div class="app"><div class="content" style="padding-top:34px;">
-        <div class="brand" style="margin-bottom:2px;"><span class="ball">⚽</span> PELADA<span style="color:var(--gold)">+</span></div>
+        <div class="brand" style="margin-bottom:2px;"><span class="ball">⚽</span> MEU<span style="color:var(--gold)">FUT</span></div>
         <div class="brand-sub" style="margin-bottom:22px;">app da associação</div>
         <div class="eyebrow">Etapa 1 de 5</div>
         <h1 class="page-title">Dados pessoais</h1>
@@ -1073,7 +1073,7 @@ function traduzErroAuth(e){
     return `
       <div class="topbar">
         <div>
-          <div class="brand"><span class="ball">⚽</span> PELADA<span style="color:var(--gold)">+</span></div>
+          <div class="brand"><span class="ball">⚽</span> MEU<span style="color:var(--gold)">FUT</span></div>
           <div class="brand-sub">${a ? '🏛️ '+a.name : 'app da associação'}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
@@ -3661,7 +3661,7 @@ function traduzErroAuth(e){
       const m = matchById(ui.resumoMatchId); const g = m ? groupById(m.groupId) : null;
       if(m){
         const numA = m.timeA+1, numB = m.timeB+1;
-        const texto = `⚽ ${g?g.name:''}\n📅 ${fmtDate(m.date)}\nTime ${numA} ${m.placar.A} x ${m.placar.B} Time ${numB}\nVeja o resumo completo no app Pelada+!`;
+        const texto = `⚽ ${g?g.name:''}\n📅 ${fmtDate(m.date)}\nTime ${numA} ${m.placar.A} x ${m.placar.B} Time ${numB}\nVeja o resumo completo no MeuFut (meufut.app)!`;
         if(navigator.clipboard) navigator.clipboard.writeText(texto).catch(()=>{});
         showToast('Resumo copiado!');
       }
@@ -4044,7 +4044,7 @@ function traduzErroAuth(e){
 
     document.querySelectorAll('[data-copy-invite]').forEach(el=> el.onclick = ()=>{
       const g = groupById(el.dataset.copyInvite);
-      const text = `Você foi convidado para a pelada "${g.name}" ⚽ Abra o app Pelada+ e toque em Fut para entrar.`;
+      const text = `Você foi convidado para a pelada "${g.name}" ⚽ Abra o MeuFut (meufut.app) e toque em Fut para entrar.`;
       if(navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
       showToast('Convite copiado!');
     });
@@ -4424,7 +4424,7 @@ function traduzErroAuth(e){
     const menuCompartilharBtn = document.querySelector('[data-action="menu-compartilhar"]');
     if(menuCompartilharBtn) menuCompartilharBtn.onclick = ()=>{
       const m = matchById(ui.matchId); const g = groupById(m.groupId);
-      const texto = `⚽ ${g.name}\n📅 ${fmtDate(m.date)} · ⏰ ${m.time}\n📍 ${m.local}\nConfirme sua presença no app Pelada+!`;
+      const texto = `⚽ ${g.name}\n📅 ${fmtDate(m.date)} · ⏰ ${m.time}\n📍 ${m.local}\nConfirme sua presença no MeuFut!`;
       if(navigator.clipboard) navigator.clipboard.writeText(texto).catch(()=>{});
       ui.menuPartidaAberto=false; showToast('Convite copiado!'); render();
     };
