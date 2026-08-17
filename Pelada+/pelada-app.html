@@ -20,14 +20,31 @@
     --blue:#4c86c7;
     --red:#c75c42;
     --radius:14px;
+    --bg-glow:#17351f;
+    --bg-texture:rgba(244,239,225,.035);
+  }
+  html[data-theme="escuro"]{
+    --bg:#0a0a0d;
+    --bg2:#121215;
+    --card:#18181c;
+    --card2:#1f1f24;
+    --ink:#f2f2f2;
+    --ink-dim:#93939a;
+    --line:rgba(255,255,255,.11);
+    --gold:#e4b94c;
+    --gold-ink:#2b1f06;
+    --blue:#4c86c7;
+    --red:#c75c42;
+    --bg-glow:#1b1b20;
+    --bg-texture:rgba(255,255,255,.03);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
   body,.root{
     margin:0;
     background:
-      radial-gradient(circle at 15% 0%, #17351f 0%, transparent 55%),
-      repeating-linear-gradient(90deg, rgba(244,239,225,.035) 0 1px, transparent 1px 64px),
+      radial-gradient(circle at 15% 0%, var(--bg-glow) 0%, transparent 55%),
+      repeating-linear-gradient(90deg, var(--bg-texture) 0 1px, transparent 1px 64px),
       var(--bg);
     color:var(--ink);
     font-family:'Inter',sans-serif;
@@ -609,6 +626,8 @@ function traduzErroAuth(e){
   // ---------- render root ----------
   function render(){
     const root = document.getElementById('root');
+    const pTema = myPlayer();
+    document.documentElement.setAttribute('data-theme', (pTema && pTema.temaEscuro) ? 'escuro' : 'padrao');
     if(view==='loading'){ root.innerHTML = `<div class="app"><div class="empty">Carregando...</div></div>`; return; }
     if(view==='login'){ root.innerHTML = renderLogin(); attachLogin(); return; }
     if(view==='verify-email'){ root.innerHTML = renderVerifyEmail(); attachVerifyEmail(); return; }
@@ -3521,6 +3540,7 @@ function traduzErroAuth(e){
     return cabecalho + renderGrupoTabConfig(fut);
   }
   function renderConfigPessoalHub(){
+    const p = myPlayer();
     const items = [
       {key:'jogador', icon:'👤', label:'Dados do jogador'},
       {key:'pessoais', icon:'📋', label:'Dados pessoais'},
@@ -3539,6 +3559,10 @@ function traduzErroAuth(e){
           <div class="list-row" data-open-config="${it.key}" style="cursor:pointer;">
             <div class="name" style="flex:1;">${it.icon} ${it.label}</div><div class="meta">›</div>
           </div>`).join('')}
+        <div class="list-row">
+          <div style="flex:1;"><div class="name">🌓 Tema escuro</div><div class="meta">Alterna entre o tema padrão e um tema escuro neutro.</div></div>
+          <button class="btn btn-sm ${p&&p.temaEscuro?'btn-gold':'btn-ghost'}" data-action="toggle-tema-escuro">${p&&p.temaEscuro?'Ativado':'Desativado'}</button>
+        </div>
       </div>
       <button class="btn btn-ghost btn-block" style="margin-top:16px;" data-action="logout">Sair</button>
     `;
@@ -4421,6 +4445,14 @@ function traduzErroAuth(e){
       if(!souAdminAssoc()) return;
       const a = associacaoAtual();
       a.financeiroSoAdmin = !a.financeiroSoAdmin;
+      await saveData(); render();
+    };
+
+    const toggleTemaEscuroBtn = document.querySelector('[data-action="toggle-tema-escuro"]');
+    if(toggleTemaEscuroBtn) toggleTemaEscuroBtn.onclick = async ()=>{
+      const p = myPlayer(); if(!p) return;
+      p.temaEscuro = !p.temaEscuro;
+      document.documentElement.setAttribute('data-theme', p.temaEscuro ? 'escuro' : 'padrao');
       await saveData(); render();
     };
 
