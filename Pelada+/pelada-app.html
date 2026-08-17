@@ -80,8 +80,19 @@
     border-radius:var(--radius);
     padding:16px;
     margin-bottom:14px;
+    box-shadow:0 3px 12px rgba(0,0,0,.22);
   }
   .card.tight{padding:14px 16px;}
+
+  /* Scoreboard: recessed LED-panel treatment for numbers that matter (rating, placar). One signature, used sparingly. */
+  .scoreboard-panel{
+    background:linear-gradient(180deg,var(--bg2),var(--bg));
+    border:1px solid var(--line);
+    border-radius:12px;
+    box-shadow:inset 0 2px 8px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.02);
+    padding:14px 18px;
+  }
+  .scoreboard-caption{font-size:9.5px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:var(--ink-dim);margin-top:6px;text-align:center;}
   .row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
 
   .btn{
@@ -91,8 +102,8 @@
     transition:transform .08s ease, filter .15s ease;
   }
   .btn:active{transform:scale(.97);}
-  .btn-gold{background:var(--gold);color:var(--gold-ink);}
-  .btn-gold:hover{filter:brightness(1.08);}
+  .btn-gold{background:linear-gradient(180deg,#f0cc6b,var(--gold) 55%,#c99f3c);color:var(--gold-ink);box-shadow:0 2px 8px rgba(228,185,76,.28);}
+  .btn-gold:hover{filter:brightness(1.06);}
   .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
   .btn-ghost:hover{border-color:var(--gold);}
   .btn-danger{background:rgba(199,92,66,.18);color:#e8917a;border:1px solid rgba(199,92,66,.4);}
@@ -117,7 +128,11 @@
   .resenha-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .resenha-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 12px;cursor:pointer;}
   .resenha-card:active{border-color:var(--gold);}
-  .resenha-icon{font-size:22px;margin-bottom:4px;}
+  .resenha-icon{
+    width:38px;height:38px;border-radius:11px;font-size:18px;margin-bottom:8px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--bg2);border:1px solid var(--line);
+  }
   .resenha-title{font-weight:800;font-size:13px;margin-bottom:3px;}
   .resenha-desc{font-size:11px;color:var(--ink-dim);line-height:1.4;}
 
@@ -146,8 +161,14 @@
     background:none;border:none;color:var(--ink-dim);font-family:'Inter';font-size:10.5px;font-weight:700;
     display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 8px;flex:1;
   }
-  .nav-item .ic{font-size:19px;}
+  .nav-item .ic{
+    font-size:16px;width:30px;height:30px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--bg2);border:1px solid transparent;
+    transition:border-color .15s ease, background-color .15s ease;
+  }
   .nav-item.active{color:var(--gold);}
+  .nav-item.active .ic{border-color:rgba(228,185,76,.5);background:rgba(228,185,76,.14);}
 
   .badge{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.5px;}
   .badge-open{background:rgba(228,185,76,.18);color:var(--gold);}
@@ -157,7 +178,11 @@
   .empty{text-align:center;padding:40px 20px;color:var(--ink-dim);}
   .empty .ball{font-size:32px;display:block;margin-bottom:10px;}
 
-  .score-line{font-family:'Bebas Neue';font-size:42px;display:flex;align-items:center;justify-content:center;gap:14px;letter-spacing:1px;}
+  .score-line{
+    font-family:'Bebas Neue';font-size:42px;display:flex;align-items:center;justify-content:center;gap:14px;letter-spacing:1px;
+    background:linear-gradient(180deg,var(--bg2),var(--bg));border:1px solid var(--line);border-radius:12px;
+    padding:14px 10px;box-shadow:inset 0 2px 8px rgba(0,0,0,.45);
+  }
   .score-line .vs{font-size:16px;color:var(--ink-dim);font-family:'Inter';font-weight:700;}
   .team-label{font-family:'Bebas Neue';font-size:15px;letter-spacing:1px;text-align:center;}
   .team-label.blue{color:#a8c9e8;}
@@ -3165,7 +3190,9 @@ function traduzErroAuth(e){
           return `
           <div class="card tight" data-resumo-match="${m.id}" style="cursor:pointer;">
             <div class="row"><div style="font-weight:800;">📅 ${fmtDate(m.date)}</div><div class="meta">${g.name}</div></div>
-            <div class="display" style="text-align:center;font-size:22px;color:var(--gold);margin-top:6px;">Time ${numA} ${m.placar.A} <span style="font-size:12px;color:var(--ink-dim);font-family:Inter;">x</span> ${m.placar.B} Time ${numB}</div>
+            <div class="scoreboard-panel" style="margin-top:8px;padding:10px 10px;">
+              <div class="display" style="text-align:center;font-size:22px;color:var(--gold);">Time ${numA} ${m.placar.A} <span style="font-size:12px;color:var(--ink-dim);font-family:Inter;">x</span> ${m.placar.B} Time ${numB}</div>
+            </div>
           </div>`;
         }).join('')}
     `;
@@ -3206,7 +3233,7 @@ function traduzErroAuth(e){
           <div class="list-row" data-action="resumo-compartilhar" style="cursor:pointer;"><div class="name">🔗 Compartilhar</div></div>
           <div class="list-row" data-action="resumo-remover-pelada" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Remover pelada</div></div>
         </div></div>` : ''}
-      <div class="card" style="text-align:center;">
+      <div class="scoreboard-panel" style="text-align:center;">
         <div class="display" style="font-size:28px;color:var(--gold);">Time ${numA} ${m.placar.A} <span style="font-size:12px;color:var(--ink-dim);font-family:Inter;">x</span> ${m.placar.B} Time ${numB}</div>
       </div>
       <div class="eyebrow" style="margin-top:16px;">Dentro (${dentroIds.length})</div>
@@ -3578,7 +3605,10 @@ function traduzErroAuth(e){
       <p class="lead" style="margin-top:-14px;">${tipoAtual}: ${posicaoPrincipalPara(p,tipoAtual)}</p>
       <div class="card">
         <div class="row">
-          <div class="display" style="font-size:44px;color:var(--gold);">${ovr(p, tipoAtual)}</div>
+          <div class="scoreboard-panel" style="text-align:center;">
+            <div class="display" style="font-size:44px;line-height:1;color:var(--gold);text-shadow:0 0 16px rgba(228,185,76,.4);">${ovr(p, tipoAtual)}</div>
+            <div class="scoreboard-caption">OVR · ${tipoAtual}</div>
+          </div>
           <div style="text-align:right;">
             <div class="meta">${p.stats.jogos} partidas</div>
             <div class="meta">${p.stats.gols} gols · ${p.stats.assistencias} assist.</div>
