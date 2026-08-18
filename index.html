@@ -1213,6 +1213,7 @@ function traduzErroAuth(e){
       case 'grupo-detalhe': return renderGrupoDetalhe();
       case 'financeiro': return renderFinanceiro();
       case 'partida-detalhe': return renderPartidaDetalhe();
+      case 'fut-dia-resumo': return renderFutDiaResumo();
       case 'resenha': return renderResenha();
       case 'ranking': return renderRanking();
       case 'perfil': return renderPerfil();
@@ -1381,20 +1382,47 @@ function traduzErroAuth(e){
   function renderGrupoTabFut(g){
     const matches = groupMatches(g.id);
     const souAdmin = souAdminAssoc();
+    // partidas com times já sorteados viram "Fut do dia" (um card por dia) quando o dia já terminou;
+    // partidas ainda sem times (ou o dia ainda em andamento) continuam listadas individualmente.
+    const semTimes = matches.filter(m=>!m.times);
+    const dias = agruparPorDia(matches.filter(m=>m.times));
+    const itens = [];
+    dias.forEach(dia=>{
+      if(diaEhFinalizado(dia.jogos)){
+        const golsTotais = dia.jogos.reduce((t,mm)=> t+(mm.placar?mm.placar.A+mm.placar.B:0), 0);
+        const ultimo = dia.jogos[dia.jogos.length-1];
+        itens.push({ date: dia.date, html: `
+          <div class="card tight" data-abrir-fut-dia="${dia.groupId}|${dia.date}" style="cursor:pointer;">
+            <div class="row">
+              <div><div style="font-weight:800;">📅 Fut do dia ${fmtDate(dia.date)} · ⏰ ${dia.jogos[0].time||''}</div><div class="meta">📍 ${dia.jogos[0].local||''} · ${dia.jogos.length} jogo${dia.jogos.length===1?'':'s'} · ${golsTotais} gols</div></div>
+              <div class="badge badge-done">Finalizado</div>
+            </div>
+          </div>` });
+      } else {
+        dia.jogos.forEach(m=> itens.push({ date: m.date, html: `
+          <div class="card tight" data-open-match="${m.id}" style="cursor:pointer;">
+            <div class="row">
+              <div><div style="font-weight:800;">📅 ${fmtDate(m.date)} · ⏰ ${m.time}</div><div class="meta">📍 ${m.local}</div></div>
+              ${matchBadge(m,g)}
+            </div>
+          </div>` }));
+      }
+    });
+    semTimes.forEach(m=> itens.push({ date: m.date, html: `
+      <div class="card tight" data-open-match="${m.id}" style="cursor:pointer;">
+        <div class="row">
+          <div><div style="font-weight:800;">📅 ${fmtDate(m.date)} · ⏰ ${m.time}</div><div class="meta">📍 ${m.local}</div></div>
+          ${matchBadge(m,g)}
+        </div>
+      </div>` }));
+    itens.sort((a,b)=> a.date.localeCompare(b.date));
     return `
       <p class="lead" style="margin-bottom:14px;">💰 A cobrança da associação é mensal (mensalidade dos sócios) — não é cobrada por partida.</p>
       <div class="row" style="margin-bottom:6px;align-items:center;">
         <div class="eyebrow" style="margin:0;">Partidas</div>
         ${souAdmin ? `<button class="btn btn-gold btn-sm" data-action="marcar-fut" data-gid="${g.id}">📅 MARCAR FUT</button>` : ''}
       </div>
-      ${matches.length===0 ? `<p class="lead">Nenhuma partida marcada.</p>` :
-        matches.map(m=>`
-          <div class="card tight" data-open-match="${m.id}" style="cursor:pointer;">
-            <div class="row">
-              <div><div style="font-weight:800;">📅 ${fmtDate(m.date)} · ⏰ ${m.time}</div><div class="meta">📍 ${m.local}</div></div>
-              ${matchBadge(m,g)}
-            </div>
-          </div>`).join('')}
+      ${itens.length===0 ? `<p class="lead">Nenhuma partida marcada.</p>` : itens.map(i=>i.html).join('')}
     `;
   }
   function renderGrupoTabFinanceiro(g){
@@ -2531,7 +2559,7 @@ function traduzErroAuth(e){
   function pontosTimesDoDia(m,g){
     const partidas = partidasDoDia(m,g);
     const porTime = {};
-    const get = idx=> porTime[idx] = porTime[idx] || {idx, partidas:0, vitorias:0, empates:0, derrotas:0, golsPro:0, golsContra:0, pontos:0};
+    const get = idx=> porTime[idx] = porTime[idx] || {idx, partidas:0, vitorias:0, empates:0, derrotas:0, golsPro:0, golsContra:0, pontos:0, cartoes:0};
     partidas.forEach(mm=>{
       const rA = get(mm.timeA), rB = get(mm.timeB);
       rA.partidas+=1; rB.partidas+=1;
@@ -2540,8 +2568,75 @@ function traduzErroAuth(e){
       if(mm.placar.A>mm.placar.B){ rA.vitorias+=1; rA.pontos+=3; rB.derrotas+=1; }
       else if(mm.placar.B>mm.placar.A){ rB.vitorias+=1; rB.pontos+=3; rA.derrotas+=1; }
       else { rA.empates+=1; rB.empates+=1; rA.pontos+=1; rB.pontos+=1; }
+      const somaCartoes = ids => ids.reduce((tot,pid)=>{ const c=(mm.cartoes&&mm.cartoes[pid])||{}; return tot+(c.amarelo||0)+(c.vermelho||0)+(c.azul||0); },0);
+      rA.cartoes += somaCartoes(jogadoresDoTime(mm,'A'));
+      rB.cartoes += somaCartoes(jogadoresDoTime(mm,'B'));
     });
-    return Object.values(porTime).sort((a,b)=> b.pontos-a.pontos || (b.golsPro-b.golsContra)-(a.golsPro-a.golsContra) || b.golsPro-a.golsPro);
+    const confrontoDireto = (idxA, idxB) => {
+      let ptsA=0, ptsB=0;
+      partidas.forEach(mm=>{
+        if(mm.timeA===idxA && mm.timeB===idxB){ if(mm.placar.A>mm.placar.B) ptsA+=3; else if(mm.placar.B>mm.placar.A) ptsB+=3; else { ptsA+=1; ptsB+=1; } }
+        else if(mm.timeA===idxB && mm.timeB===idxA){ if(mm.placar.A>mm.placar.B) ptsB+=3; else if(mm.placar.B>mm.placar.A) ptsA+=3; else { ptsA+=1; ptsB+=1; } }
+      });
+      return ptsA-ptsB;
+    };
+    return Object.values(porTime).sort((a,b)=>
+      b.pontos-a.pontos ||
+      (b.golsPro-b.golsContra)-(a.golsPro-a.golsContra) ||
+      confrontoDireto(a.idx,b.idx) ||
+      a.cartoes-b.cartoes ||
+      b.golsPro-a.golsPro
+    );
+  }
+  // ---------- FUT DO DIA (agrega várias partidas do mesmo dia, quando o "Fim de jogo" gera vários jogos) ----------
+  function jogosDoFutDia(groupId, date){
+    return data.matches.filter(mm=> mm.groupId===groupId && mm.date===date && mm.times);
+  }
+  function diaEhFinalizado(jogos){
+    if(!jogos.length) return false;
+    return jogos[jogos.length-1].status === 'finalizada';
+  }
+  function agruparPorDia(matches){
+    const ordem = [], porChave = {};
+    matches.forEach(mm=>{
+      const chave = mm.groupId+'|'+mm.date;
+      if(!porChave[chave]){ porChave[chave] = { groupId: mm.groupId, date: mm.date, jogos: [] }; ordem.push(chave); }
+      porChave[chave].jogos.push(mm);
+    });
+    return ordem.map(chave=>porChave[chave]);
+  }
+  function destaquesDoDia(groupId, date){
+    const jogos = jogosDoFutDia(groupId, date).filter(j=>j.status==='finalizada');
+    if(!jogos.length) return null;
+    const gols = {}, assists = {}, goleiros = {}, notasArb = [];
+    jogos.forEach(mm=>{
+      Object.entries(mm.golsPorJogador||{}).forEach(([pid,n])=>{ if(n) gols[pid]=(gols[pid]||0)+n; });
+      Object.entries(mm.statsJogo||{}).forEach(([pid,st])=>{ if(st && st.assistencia) assists[pid]=(assists[pid]||0)+st.assistencia; });
+      Object.values(mm.avaliacoesFeitas||{}).forEach(votos=>{
+        const n = votos && votos['arbitragem'];
+        if(n!=null && n!=='') notasArb.push(Number(n));
+      });
+      const idsNoJogo = [...jogadoresDoTime(mm,'A'), ...jogadoresDoTime(mm,'B')];
+      idsNoJogo.forEach(pid=>{
+        const pl = playerById(pid); if(!pl) return;
+        if(matchPos(mm,pl)!=='Goleiro') return;
+        const st = (mm.statsJogo && mm.statsJogo[pid]) || {};
+        goleiros[pid] = goleiros[pid] || {pid, jogos:0, golsSofridos:0, defesasDificeis:0};
+        goleiros[pid].jogos += 1;
+        goleiros[pid].golsSofridos += (st.golSofrido||0);
+        goleiros[pid].defesasDificeis += (st.defesaDificil||0);
+      });
+    });
+    const artilheiro = Object.entries(gols).sort((a,b)=>b[1]-a[1])[0];
+    const assistente = Object.entries(assists).sort((a,b)=>b[1]-a[1])[0];
+    const melhorGoleiro = Object.values(goleiros).sort((a,b)=> a.golsSofridos-b.golsSofridos || b.defesasDificeis-a.defesasDificeis)[0];
+    const mediaArbitragem = notasArb.length ? notasArb.reduce((a,b)=>a+b,0)/notasArb.length : null;
+    return {
+      artilheiro: artilheiro ? {pid:artilheiro[0], gols:artilheiro[1]} : null,
+      assistente: assistente ? {pid:assistente[0], assistencias:assistente[1]} : null,
+      melhorGoleiro: melhorGoleiro || null,
+      mediaArbitragem, votosArbitragem: notasArb.length,
+    };
   }
   function avaliacaoPrazo(m,g){
     let base;
@@ -2702,10 +2797,22 @@ function traduzErroAuth(e){
     } else {
       conteudo = renderTabAcoes(m,g);
     }
+    const atual = passos.find(p=>p.key===sub) || passos[0];
     return `
-      <div class="row" style="justify-content:center;gap:6px;margin-bottom:12px;">
-        ${passos.map((p,i)=>`<div class="sub-pill ${sub===p.key?'active':''}" data-msub="${p.key}">${p.label}</div>`).join('')}
+      <div class="list-row" data-action="abrir-eventos-fut" style="cursor:pointer;background:var(--bg2);border-radius:12px;margin-bottom:12px;">
+        <div class="name" style="flex:1;">🎬 Eventos do Fut · ${atual.label}</div>
+        <div class="meta">▾</div>
       </div>
+      ${ui.eventosFutMenuAberto ? `
+        <div class="modal-bg" data-close-eventos-fut="1"><div class="modal" onclick="event.stopPropagation()">
+          <div class="modal-handle"></div>
+          <div class="eyebrow" style="margin-bottom:8px;">🎬 Eventos do Fut</div>
+          ${passos.map(p=>`
+            <div class="list-row" data-msub="${p.key}" data-fechar-eventos-fut="1" style="cursor:pointer;">
+              <div class="name" style="flex:1;">${p.label}</div>
+              ${sub===p.key?'<div>✅</div>':''}
+            </div>`).join('')}
+        </div></div>` : ''}
       ${conteudo}
       ${continuar}
     `;
@@ -3544,20 +3651,20 @@ function traduzErroAuth(e){
   }
   function renderResenhaPeladas(){
     const gids = data.groups.filter(g=>g.associacaoId===associacaoId).map(g=>g.id);
-    const partidas = data.matches.filter(m=> gids.includes(m.groupId) && m.status==='finalizada' && m.times).sort((a,b)=> b.date.localeCompare(a.date));
+    const todasPartidas = data.matches.filter(m=> gids.includes(m.groupId) && m.times);
+    const dias = agruparPorDia(todasPartidas).filter(d=>diaEhFinalizado(d.jogos)).sort((a,b)=> b.date.localeCompare(a.date));
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-resenha" style="margin-bottom:14px;">← Resenha</button>
       <h1 class="page-title">🗓️ Últimas Peladas</h1>
-      ${partidas.length===0 ? `<div class="empty"><span class="ball">🗓️</span>Nenhuma pelada finalizada ainda.</div>` :
-        partidas.map(m=>{
-          const g = groupById(m.groupId);
-          const numA = m.timeA+1, numB = m.timeB+1;
+      ${dias.length===0 ? `<div class="empty"><span class="ball">🗓️</span>Nenhuma pelada finalizada ainda.</div>` :
+        dias.map(dia=>{
+          const g = groupById(dia.groupId);
+          const golsTotais = dia.jogos.reduce((t,mm)=> t+(mm.placar?mm.placar.A+mm.placar.B:0), 0);
+          const ultimo = dia.jogos[dia.jogos.length-1];
           return `
-          <div class="card tight" data-resumo-match="${m.id}" style="cursor:pointer;">
-            <div class="row"><div style="font-weight:800;">📅 ${fmtDate(m.date)}</div><div class="meta">${g.name}</div></div>
-            <div class="scoreboard-panel" style="margin-top:8px;padding:10px 10px;">
-              <div class="display" style="text-align:center;font-size:22px;color:var(--gold);">Time ${numA} ${m.placar.A} <span style="font-size:12px;color:var(--ink-dim);font-family:Inter;">x</span> ${m.placar.B} Time ${numB}</div>
-            </div>
+          <div class="card tight" data-abrir-fut-dia="${dia.groupId}|${dia.date}" style="cursor:pointer;">
+            <div class="row"><div style="font-weight:800;">📅 Fut do dia ${fmtDate(dia.date)}</div><div class="meta">${g?g.name:''}</div></div>
+            <div class="meta" style="margin-top:6px;">⏰ ${dia.jogos[0].time||''}${ultimo.horaTermino?'–'+ultimo.horaTermino:''} · ${dia.jogos.length} jogo${dia.jogos.length===1?'':'s'} · ${golsTotais} gols</div>
           </div>`;
         }).join('')}
     `;
@@ -3611,6 +3718,96 @@ function traduzErroAuth(e){
       ${foraIds.length>0 ? `
       <div class="eyebrow" style="margin-top:14px;">Fora (${foraIds.length})</div>
       <div class="card">${foraIds.map(pid=>{ const pl=playerById(pid); return pl?`<div class="list-row"><div class="name">${pl.name}</div></div>`:''; }).join('')}</div>` : ''}
+    `;
+  }
+
+  // ---------- FUT DO DIA (histórico agregado, acessível pela aba Fut e pela Resenha) ----------
+  function renderFutDiaResumo(){
+    const sel = ui.futDiaSel;
+    const g = sel && groupById(sel.groupId);
+    const jogos = sel ? jogosDoFutDia(sel.groupId, sel.date).sort((a,b)=> data.matches.indexOf(a)-data.matches.indexOf(b)) : [];
+    if(!sel || !g || !jogos.length){
+      const v = ui.futDiaVoltar || {view:'grupos'};
+      view = v.view || 'grupos'; ui.resenhaSub = v.resenhaSub; if(v.groupId) ui.groupId = v.groupId;
+      ui.futDiaSel = null;
+      return renderView();
+    }
+    const primeiro = jogos[0], ultimo = jogos[jogos.length-1];
+    const rankingTimes = pontosTimesDoDia(primeiro, g);
+    const destaques = destaquesDoDia(sel.groupId, sel.date);
+    const golsTotais = jogos.reduce((t,j)=> t + (j.placar?(j.placar.A+j.placar.B):0), 0);
+
+    const blocoDestaque = (icon, label, pl, valorTxt) => pl ? `
+      <div class="card tight" style="flex:1 1 45%;min-width:140px;text-align:center;">
+        <div style="font-size:20px;">${icon}</div>
+        <div class="meta" style="text-transform:uppercase;letter-spacing:.5px;">${label}</div>
+        <div class="name" style="margin-top:2px;">${pl.name}</div>
+        <div class="meta" style="color:var(--gold);">${valorTxt}</div>
+      </div>` : '';
+
+    return `
+      <button class="btn btn-ghost btn-sm" data-action="fut-dia-voltar" style="margin-bottom:12px;">← Voltar</button>
+      <h1 class="page-title">🗓️ Fut do dia ${fmtDate(sel.date)}</h1>
+      <p class="lead">${g.name} · ⏰ ${primeiro.time||''}${ultimo.horaTermino?'–'+ultimo.horaTermino:''} · 📍 ${primeiro.local||''}</p>
+
+      <div class="eyebrow" style="margin-top:16px;">🏆 Classificação do dia</div>
+      <p class="lead" style="margin-bottom:6px;font-size:12px;">Vitória vale 3 pontos, empate vale 1. Empate no ranking: saldo de gols, confronto direto e menos cartões.</p>
+      <div class="card">
+        ${rankingTimes.length===0 ? `<p class="lead" style="margin:0;">Sem partidas finalizadas nesse dia.</p>` :
+          rankingTimes.map((r,i)=>{
+            const saldo = r.golsPro - r.golsContra;
+            return `
+            <div class="list-row">
+              <div class="jersey" style="width:30px;height:30px;font-size:11px;border-color:${corTimeM(primeiro,r.idx)};color:${corTimeM(primeiro,r.idx)};">${i+1}º</div>
+              <div style="flex:1;">
+                <div class="name">${nomeTime(primeiro,r.idx)}</div>
+                <div class="meta">${r.vitorias}V ${r.empates}E ${r.derrotas}D · Saldo: ${saldo>0?'+':''}${saldo} · 🟨 ${r.cartoes} cartões</div>
+              </div>
+              <div class="display" style="color:var(--gold);font-size:20px;">${r.pontos} pts</div>
+            </div>`;
+          }).join('')}
+      </div>
+
+      ${destaques ? `
+        <div class="eyebrow" style="margin-top:16px;">🌟 Melhores do dia</div>
+        <div class="row" style="flex-wrap:wrap;gap:10px;">
+          ${blocoDestaque('⚽','Artilheiro', destaques.artilheiro && playerById(destaques.artilheiro.pid), destaques.artilheiro?destaques.artilheiro.gols+' gols':'')}
+          ${blocoDestaque('🅰️','Assistente', destaques.assistente && playerById(destaques.assistente.pid), destaques.assistente?destaques.assistente.assistencias+' assist.':'')}
+          ${blocoDestaque('🧤','Melhor goleiro', destaques.melhorGoleiro && playerById(destaques.melhorGoleiro.pid), destaques.melhorGoleiro?destaques.melhorGoleiro.golsSofridos+' gols sofridos':'')}
+          ${destaques.mediaArbitragem!=null ? `
+          <div class="card tight" style="flex:1 1 45%;min-width:140px;text-align:center;">
+            <div style="font-size:20px;">🧑‍⚖️</div>
+            <div class="meta" style="text-transform:uppercase;letter-spacing:.5px;">Arbitragem</div>
+            <div class="name" style="margin-top:2px;">Nota média</div>
+            <div class="meta" style="color:var(--gold);">${destaques.mediaArbitragem.toFixed(1)} (${destaques.votosArbitragem} voto${destaques.votosArbitragem===1?'':'s'})</div>
+          </div>` : ''}
+        </div>
+      ` : ''}
+
+      <div class="eyebrow" style="margin-top:16px;">📜 Histórico de partidas</div>
+      <p class="lead" style="margin-bottom:6px;font-size:12px;">${jogos.length} jogo${jogos.length===1?'':'s'} · ${golsTotais} gols no total</p>
+      ${jogos.map((mm,i)=>{
+        const numA = mm.timeA+1, numB = mm.timeB+1;
+        const eventos = (mm.eventos||[]).slice().reverse();
+        return `
+        <div class="card" style="margin-bottom:10px;">
+          <div class="row" data-resumo-match="${mm.id}" style="cursor:pointer;">
+            <div style="font-weight:800;">Jogo ${i+1} · Time ${numA} x Time ${numB}</div>
+            <div class="display" style="color:var(--gold);font-size:18px;">${mm.placar?mm.placar.A:0} x ${mm.placar?mm.placar.B:0}</div>
+          </div>
+          ${mm.status!=='finalizada' ? `<div class="meta" style="margin-top:4px;">🔴 Em andamento</div>` : ''}
+          ${eventos.length===0 ? '' : `
+            <div style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px;">
+              ${eventos.map(ev=>`
+                <div class="list-row" style="padding:6px 0;">
+                  <div style="flex:1;">
+                    <div class="name" style="font-size:13px;">${ev.nome}</div>
+                    <div class="meta">${ev.label}${ev.detalhe?' · '+ev.detalhe:''}</div>
+                  </div>
+                </div>`).join('')}
+            </div>`}
+        </div>`;
+      }).join('')}
     `;
   }
 
@@ -4324,6 +4521,7 @@ function traduzErroAuth(e){
   function attachGlobalHandlers(){
     document.querySelectorAll('[data-nav]').forEach(el=> el.onclick = ()=>{
       ui.matchId=null; ui.groupId=null; ui.resenhaSub=null; ui.configSub=null; ui.futConfigSub=null;
+      ui.futDiaSel=null; ui.futDiaVoltar=null; ui.resumoVoltarFutDia=null;
       ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finStatusFiltro=null;
       ui.finSelecionados=[]; ui.finBuscaJogador=''; ui.finSelBusca=''; ui.draftTransacao=null; ui.draftCobranca=null;
       ui.draftBaixa=null; ui.finBaixaJogadorId=null;
@@ -4350,11 +4548,33 @@ function traduzErroAuth(e){
     const voltarResenhaBtn = document.querySelector('[data-action="voltar-resenha"]');
     if(voltarResenhaBtn) voltarResenhaBtn.onclick = ()=>{ ui.resenhaSub=null; view='resenha'; render(); };
 
+    document.querySelectorAll('[data-abrir-fut-dia]').forEach(el=> el.onclick = ()=>{
+      const [groupId,date] = el.dataset.abrirFutDia.split('|');
+      ui.futDiaVoltar = { view, resenhaSub: ui.resenhaSub, groupId: ui.groupId };
+      ui.futDiaSel = { groupId, date };
+      view = 'fut-dia-resumo';
+      render();
+    });
+    const futDiaVoltarBtn = document.querySelector('[data-action="fut-dia-voltar"]');
+    if(futDiaVoltarBtn) futDiaVoltarBtn.onclick = ()=>{
+      const v = ui.futDiaVoltar || {view:'grupos'};
+      view = v.view || 'grupos'; ui.resenhaSub = v.resenhaSub; if(v.groupId) ui.groupId = v.groupId;
+      ui.futDiaSel = null; ui.futDiaVoltar = null;
+      render();
+    };
+
     document.querySelectorAll('[data-resumo-match]').forEach(el=> el.onclick = ()=>{
-      ui.resumoMatchId = el.dataset.resumoMatch; ui.resenhaSub = 'pelada-resumo'; ui.resumoMenuAberto=false; render();
+      ui.resumoMatchId = el.dataset.resumoMatch;
+      ui.resumoVoltarFutDia = ui.futDiaSel ? {...ui.futDiaSel} : null;
+      ui.resenhaSub = 'pelada-resumo'; ui.resumoMenuAberto=false; view='resenha'; render();
     });
     const resumoVoltarBtn = document.querySelector('[data-action="resumo-voltar"]');
-    if(resumoVoltarBtn) resumoVoltarBtn.onclick = ()=>{ ui.resenhaSub='peladas'; ui.resumoMatchId=null; ui.resumoMenuAberto=false; render(); };
+    if(resumoVoltarBtn) resumoVoltarBtn.onclick = ()=>{
+      ui.resumoMatchId=null; ui.resumoMenuAberto=false;
+      if(ui.resumoVoltarFutDia){ ui.futDiaSel = ui.resumoVoltarFutDia; ui.resumoVoltarFutDia=null; view='fut-dia-resumo'; }
+      else { ui.resenhaSub='peladas'; }
+      render();
+    };
     const resumoAbrirMenuBtn = document.querySelector('[data-action="resumo-abrir-menu"]');
     if(resumoAbrirMenuBtn) resumoAbrirMenuBtn.onclick = ()=>{ ui.resumoMenuAberto=true; render(); };
     document.querySelectorAll('[data-close-resumo-menu]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.resumoMenuAberto=false; render(); } });
@@ -4374,7 +4594,7 @@ function traduzErroAuth(e){
       if(!souAdminAssoc()) return;
       if(!confirm('Remover essa pelada do histórico? Essa ação não pode ser desfeita.')) return;
       data.matches = data.matches.filter(mm=>mm.id!==ui.resumoMatchId);
-      ui.resumoMenuAberto=false; ui.resumoMatchId=null; ui.resenhaSub='peladas';
+      ui.resumoMenuAberto=false; ui.resumoMatchId=null; ui.resumoVoltarFutDia=null; ui.resenhaSub='peladas'; view='resenha';
       await saveData(); showToast('Pelada removida.'); render();
     };
 
@@ -5116,7 +5336,10 @@ function traduzErroAuth(e){
       showToast('Chave PIX copiada!');
     };
     document.querySelectorAll('[data-mtab]').forEach(el=> el.onclick = ()=>{ ui.matchTab = el.dataset.mtab; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.mercadoSub=null; render(); });
-    document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.pedirFalha=null; ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; ui.menuTimeIdx=null; ui.escolherCorTimeIdx=null; render(); });
+    document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.eventosFutMenuAberto=false; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.pedirFalha=null; ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; ui.menuTimeIdx=null; ui.escolherCorTimeIdx=null; render(); });
+    const abrirEventosFutBtn = document.querySelector('[data-action="abrir-eventos-fut"]');
+    if(abrirEventosFutBtn) abrirEventosFutBtn.onclick = ()=>{ ui.eventosFutMenuAberto = true; render(); };
+    document.querySelectorAll('[data-close-eventos-fut]').forEach(el=> el.onclick = ()=>{ ui.eventosFutMenuAberto = false; render(); });
 
     document.querySelectorAll('[data-mercado-sub]').forEach(el=> el.onclick = ()=>{ ui.mercadoSub = el.dataset.mercadoSub; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; render(); });
     document.querySelectorAll('[data-action="mercado-voltar"]').forEach(el=> el.onclick = ()=>{ ui.mercadoSub = null; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; render(); });
