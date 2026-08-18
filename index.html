@@ -4100,7 +4100,7 @@ function traduzErroAuth(e){
 
   // ---------- demo data generator ----------
   const NOMES_DEMO = ['Lucas','Rafael','Bruno','Felipe','André','Marcos','Thiago','Gustavo','Diego','João Pedro','Rodrigo','Vinícius','Matheus','Gabriel','Eduardo',
-    'Fernando','Igor','Henrique','Caio','Daniel','Vitor','Renato','Alexandre','Guilherme','Otávio','Leandro','Danilo'];
+    'Fernando','Igor','Henrique','Caio','Daniel','Vitor','Renato','Alexandre','Guilherme','Otávio','Leandro','Danilo','Pedro','Wesley','Carlos','Sérgio'];
   function randStars(mainPos, secPos){
     const nested = {};
     CAMPO_TIPOS.forEach(tipo=>{
@@ -4124,11 +4124,15 @@ function traduzErroAuth(e){
       await saveMe();
     }
     const assocAtual = associacaoAtual();
-    const posSet = posicoesParaCampo(assocAtual ? assocAtual.campoTipo : 'Society');
+    const tipoCampo = assocAtual ? assocAtual.campoTipo : 'Society';
+    const posSet = posicoesParaCampo(tipoCampo);
     const g = { id: uid(), associacaoId, name:'Pelada Demo — Quinta', tipo:'Society', diaPadrao:'Quinta-feira', horarioPadrao:'20:00',
-      local:'Quadra Central', maxPlayers:28, valor:20, adminId: me, memberIds:[me] };
-    const fakePlayers = NOMES_DEMO.map((nome,i)=>{
-      const mainPos = i<4 ? 'Goleiro' : pick(posSet.filter(pos=>pos!=='Goleiro'));
+      local:'Quadra Central', maxPlayers:28, valor:20, adminId: me, memberIds:[me], diaristas:[] };
+
+    // --- Mensalistas: membros fixos do Fut (nem todos vão confirmar) ---
+    const nomesMensalistas = NOMES_DEMO.slice(0,18);
+    const mensalistas = nomesMensalistas.map((nome,i)=>{
+      const mainPos = i<2 ? 'Goleiro' : pick(posSet.filter(pos=>pos!=='Goleiro')); // só 2 goleiros fixos: o resto da vaga de goleiro vem de convidado
       let secPos = pick(posSet); while(secPos===mainPos) secPos = pick(posSet);
       return { id: uid(), name: nome, usuario: 'demo'+i, senha:'demo', googleConnected:false, whatsapp:'(11) 9'+String(1000+i).padStart(4,'0')+'-0000',
         nascimento:'1996-01-01', estado:'BA', cidade:'Ilhéus', genero:'Masculino', estadoCivil:'Solteiro', filhos:'Não',
@@ -4136,50 +4140,96 @@ function traduzErroAuth(e){
         starsByPosition: randStars(mainPos, secPos), foto:null,
         stats:{ jogos:0, gols:0, assistencias:0, vitorias:0, empates:0, derrotas:0, cartoes:0 } };
     });
-    data.players.push(...fakePlayers);
-    g.memberIds.push(...fakePlayers.map(f=>f.id));
+    data.players.push(...mensalistas);
+    g.memberIds.push(...mensalistas.map(f=>f.id));
+    g.diaristas.push(mensalistas[5].id, mensalistas[6].id, mensalistas[7].id); // alguns diaristas, pra testar a distinção
     data.groups.push(g);
 
-    const allIds = [me, ...fakePlayers.map(f=>f.id)]; // 28 jogadores, 4 goleiros garantidos
-    const posByPlayer = {};
-    allIds.forEach(id=>{ posByPlayer[id] = posicaoPrincipalPara(playerById(id), assocAtual?assocAtual.campoTipo:'Society'); });
+    const mensalistaIds = [me, ...mensalistas.map(f=>f.id)]; // 19 mensalistas, 2 goleiros garantidos
+    const posByPlayerMensalista = {};
+    mensalistaIds.forEach(id=>{ posByPlayerMensalista[id] = posicaoPrincipalPara(playerById(id), tipoCampo); });
 
-    // Partida 1: já finalizada (histórico) para popular ranking e estatísticas — Time 1 x Time 2
+    // --- Partida 1: já finalizada (histórico), só com os mensalistas — popula ranking e estatísticas ---
     const ontem = new Date(); ontem.setDate(ontem.getDate()-6);
     const m1 = { id: uid(), groupId:g.id, date: ontem.toISOString().slice(0,10), time:'20:00', local:g.local, valor:g.valor,
-      confirmed:[...allIds], maybe:[], declined:[], waitlist:[], status:'sorteada',
-      positionByPlayer:{...posByPlayer}, chegadas:{}, statsJogo:{}, timer:{rodando:false,inicioTs:null,acumuladoMs:0},
+      confirmed:[...mensalistaIds], maybe:[], declined:[], waitlist:[], status:'sorteada',
+      positionByPlayer:{...posByPlayerMensalista}, chegadas:{}, statsJogo:{}, timer:{rodando:false,inicioTs:null,acumuladoMs:0},
       placar:{A:0,B:0}, golsPorJogador:{}, pagamentos:{}, cartoes:{}, avaliacoesFeitas:{} };
-    const { times: timesM1 } = sortearComFila(allIds, m1, Math.floor(allIds.length/2));
+    const { times: timesM1 } = sortearComFila(mensalistaIds, m1, Math.floor(mensalistaIds.length/2));
     m1.times = timesM1; m1.timeA = 0; m1.timeB = 1; m1.filaIdx = timesM1.length>2 ? timesM1.slice(2).map((_,i)=>i+2) : [];
     const golsA = randInt(2,6), golsB = randInt(2,5);
     for(let i=0;i<golsA;i++){ const s=pick(m1.times[0]); m1.golsPorJogador[s]=(m1.golsPorJogador[s]||0)+1; }
     for(let i=0;i<golsB;i++){ const s=pick(m1.times[1]); m1.golsPorJogador[s]=(m1.golsPorJogador[s]||0)+1; }
     m1.placar = {A:golsA, B:golsB};
     m1.status = 'finalizada';
-    allIds.forEach(id=>{ if(Math.random()>0.25) m1.pagamentos[id]=true; });
-    allIds.forEach(raterId=>{
+    mensalistaIds.forEach(id=>{ if(Math.random()>0.25) m1.pagamentos[id]=true; });
+    mensalistaIds.forEach(raterId=>{
       const notas = {};
-      allIds.filter(id=>id!==raterId).forEach(targetId=>{ notas[targetId] = randInt(6,10); });
+      mensalistaIds.filter(id=>id!==raterId).forEach(targetId=>{ notas[targetId] = randInt(6,10); });
       m1.avaliacoesFeitas[raterId] = notas;
     });
     applyMatchResultStats(m1);
     data.matches.push(m1);
 
-    // Partida 2: próxima, todos já confirmados e chegados, com 4 TIMES de 7 já sorteados (2 em quadra + 2 na fila)
+    // --- Partida 2: a de hoje — simula confirmações reais e depois convidados até fechar 28 jogadores / 4 goleiros ---
     const sabado = new Date(); sabado.setDate(sabado.getDate() + ((6 - sabado.getDay() + 7) % 7 || 7));
-    const chegadas2 = {}; allIds.forEach(id=>{ chegadas2[id]=true; });
     const m2 = { id: uid(), groupId:g.id, date: sabado.toISOString().slice(0,10), time:'16:00', local:g.local, valor:g.valor,
-      confirmed:[...allIds], maybe:[], declined:[], waitlist:[], status:'sorteada',
-      positionByPlayer:{...posByPlayer}, chegadas: chegadas2, statsJogo:{}, timer:{rodando:false,inicioTs:null,acumuladoMs:0},
+      confirmed:[], maybe:[], declined:[], waitlist:[], status:'aberta',
+      positionByPlayer:{}, confirmadoEm:{}, chegadas:{}, statsJogo:{}, timer:{rodando:false,inicioTs:null,acumuladoMs:0},
       placar:{A:0,B:0}, golsPorJogador:{}, pagamentos:{}, cartoes:{}, avaliacoesFeitas:{} };
-    const { times: times4 } = sortearComFila(allIds, m2, 7);
+
+    // a maioria dos mensalistas confirma; alguns ficam de talvez ou não vão dar
+    const naoConfirmam = mensalistas.slice(-4);
+    const talvez = naoConfirmam.slice(0,2), declinam = naoConfirmam.slice(2);
+    mensalistaIds.forEach(id=>{
+      if(talvez.some(f=>f.id===id)){ m2.maybe.push(id); return; }
+      if(declinam.some(f=>f.id===id)){ m2.declined.push(id); return; }
+      m2.confirmed.push(id);
+      m2.positionByPlayer[id] = posByPlayerMensalista[id];
+      m2.confirmadoEm[id] = new Date(Date.now() - randInt(1,48)*3600*1000).toISOString();
+    });
+    logAtividade(g, `${talvez.length} jogador(es) marcaram talvez e ${declinam.length} não vão poder ir`);
+
+    // faltam vagas e goleiros pro fechamento: admin adiciona convidados (mesmo fluxo de "Adicionar convidado")
+    const golsConfirmados = mensalistaIds.filter(id=> m2.confirmed.includes(id) && posByPlayerMensalista[id]==='Goleiro').length;
+    const vagasRestantes = 28 - m2.confirmed.length;
+    const goleirosNecessarios = Math.max(0, 4 - golsConfirmados);
+    const nomesConvidados = NOMES_DEMO.slice(18, 18+vagasRestantes);
+    const convidados = nomesConvidados.map((nome,i)=>{
+      const querGoleiro = i < goleirosNecessarios;
+      const pos = querGoleiro ? 'Goleiro' : pick(posSet.filter(x=>x!=='Goleiro'));
+      const notaBase = randInt(5,9);
+      const stars = Object.fromEntries(CAMPO_TIPOS.map(t=>[t, Object.fromEntries(posicoesParaCampo(t).map(ps=>[ps, (ps===pos && t===tipoCampo) ? notaBase : 5]))]));
+      return { id: uid(), name: nome, usuario:null, senha:null, googleConnected:false,
+        whatsapp:'', nascimento:'', estado:'', cidade:'', genero:'', estadoCivil:'', filhos:'',
+        posicaoPrincipal:{[tipoCampo]:pos}, pe:'Direito', altura:'', peso:'', pe_numero:'', timeCoracao:'',
+        starsByPosition: stars, foto:null, convidado:true,
+        stats:{jogos:0,gols:0,assistencias:0,vitorias:0,empates:0,derrotas:0,cartoes:0} };
+    });
+    data.players.push(...convidados);
+    convidados.forEach(c=>{
+      m2.confirmed.push(c.id);
+      m2.positionByPlayer[c.id] = c.posicaoPrincipal[tipoCampo];
+      m2.confirmadoEm[c.id] = new Date(Date.now() - randInt(1,6)*3600*1000).toISOString();
+    });
+    if(convidados.length) logAtividade(g, `adicionou ${convidados.length} convidado(s) como convidado pra completar a pelada`);
+
+    // chegadas: a maioria já chegou (ordem de chegada numerada), um punhado só confirmou e ainda não chegou
+    const idsConfirmados = m2.confirmed.slice();
+    const aindaNaoChegaram = idsConfirmados.slice(-3);
+    idsConfirmados.forEach((id,i)=>{
+      if(aindaNaoChegaram.includes(id)) return;
+      m2.chegadas[id] = Date.now() - (idsConfirmados.length-i)*60000;
+    });
+
+    m2.status = 'sorteada';
+    const { times: times4 } = sortearComFila(m2.confirmed, m2, 7);
     m2.times = times4; m2.timeA = 0; m2.timeB = 1; m2.filaIdx = times4.length>2 ? times4.slice(2).map((_,i)=>i+2) : [];
     data.matches.push(m2);
 
     await saveData();
     ui.groupId = g.id; ui.matchId = m2.id; view = 'partida-detalhe'; ui.matchTab = 'partida'; ui.matchSubTab = 'acoes';
-    showToast('Demonstração criada! 28 jogadores, 4 goleiros, 4 times prontos.');
+    showToast(`Demonstração criada! ${m2.confirmed.length-convidados.length} mensalistas confirmaram, ${talvez.length} de talvez, ${declinam.length} não vão — e ${convidados.length} convidados completaram os ${m2.confirmed.length} jogadores (4 goleiros, 4 times prontos).`);
     render();
   }
 
