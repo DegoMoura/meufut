@@ -1382,39 +1382,30 @@ function traduzErroAuth(e){
   function renderGrupoTabFut(g){
     const matches = groupMatches(g.id);
     const souAdmin = souAdminAssoc();
-    // partidas com times já sorteados viram "Fut do dia" (um card por dia) quando o dia já terminou;
-    // partidas ainda sem times (ou o dia ainda em andamento) continuam listadas individualmente.
+    // um dia finalizado some da aba Fut assim que o prazo de avaliações termina — a partir daí
+    // só fica disponível no histórico (Resenha > Últimas Peladas). Enquanto o prazo estiver aberto,
+    // continua acessível aqui pra permitir dar as notas.
     const semTimes = matches.filter(m=>!m.times);
     const dias = agruparPorDia(matches.filter(m=>m.times));
-    const itens = [];
-    dias.forEach(dia=>{
-      if(diaEhFinalizado(dia.jogos)){
-        const golsTotais = dia.jogos.reduce((t,mm)=> t+(mm.placar?mm.placar.A+mm.placar.B:0), 0);
-        const ultimo = dia.jogos[dia.jogos.length-1];
-        itens.push({ date: dia.date, html: `
-          <div class="card tight" data-abrir-fut-dia="${dia.groupId}|${dia.date}" style="cursor:pointer;">
-            <div class="row">
-              <div><div style="font-weight:800;">📅 Fut do dia ${fmtDate(dia.date)} · ⏰ ${dia.jogos[0].time||''}</div><div class="meta">📍 ${dia.jogos[0].local||''} · ${dia.jogos.length} jogo${dia.jogos.length===1?'':'s'} · ${golsTotais} gols</div></div>
-              <div class="badge badge-done">Finalizado</div>
-            </div>
-          </div>` });
-      } else {
-        dia.jogos.forEach(m=> itens.push({ date: m.date, html: `
-          <div class="card tight" data-open-match="${m.id}" style="cursor:pointer;">
-            <div class="row">
-              <div><div style="font-weight:800;">📅 ${fmtDate(m.date)} · ⏰ ${m.time}</div><div class="meta">📍 ${m.local}</div></div>
-              ${matchBadge(m,g)}
-            </div>
-          </div>` }));
-      }
-    });
-    semTimes.forEach(m=> itens.push({ date: m.date, html: `
+    const cardMatch = m => `
       <div class="card tight" data-open-match="${m.id}" style="cursor:pointer;">
         <div class="row">
           <div><div style="font-weight:800;">📅 ${fmtDate(m.date)} · ⏰ ${m.time}</div><div class="meta">📍 ${m.local}</div></div>
           ${matchBadge(m,g)}
         </div>
-      </div>` }));
+      </div>`;
+    const itens = [];
+    dias.forEach(dia=>{
+      if(diaEhFinalizado(dia.jogos)){
+        const ultimo = dia.jogos[dia.jogos.length-1];
+        const prazo = avaliacaoPrazo(ultimo, g);
+        if(!prazo.expirado) itens.push({ date: ultimo.date, html: cardMatch(ultimo) });
+        // prazo expirado: não mostra mais nada aqui, só em Últimas Peladas
+      } else {
+        dia.jogos.forEach(m=> itens.push({ date: m.date, html: cardMatch(m) }));
+      }
+    });
+    semTimes.forEach(m=> itens.push({ date: m.date, html: cardMatch(m) }));
     itens.sort((a,b)=> a.date.localeCompare(b.date));
     return `
       <p class="lead" style="margin-bottom:14px;">💰 A cobrança da associação é mensal (mensalidade dos sócios) — não é cobrada por partida.</p>
@@ -2656,12 +2647,28 @@ function traduzErroAuth(e){
     return {tab:'confirmacoes'};
   }
 
+  // As 5 etapas de um Fut, na ordem natural: Confirmações → Chegadas → Times → Ao vivo → Avaliações.
+  // Ficam todas dentro de um único seletor "Eventos do Fut" (em vez de abas espalhadas).
+  const ESTAGIOS_FUT = [
+    {key:'confirmacoes', label:'✅ Confirmações'},
+    {key:'chegadas', label:'📍 Chegadas'},
+    {key:'times', label:'⚖️ Times'},
+    {key:'acoes', label:'🔴 Ao vivo'},
+    {key:'avaliacoes', label:'⭐ Avaliações'},
+  ];
+  function estagioAtualPartida(m){
+    const tab = ui.matchTab || 'confirmacoes';
+    if(tab==='confirmacoes') return 'confirmacoes';
+    if(tab==='avaliacoes') return 'avaliacoes';
+    return ui.matchSubTab || subEstagioPadrao(m);
+  }
   function renderPartidaDetalhe(){
     const m = matchById(ui.matchId);
     if(!m){ view='partidas'; return renderPartidas(); }
     const g = groupById(m.groupId);
     const tab = ui.matchTab || 'confirmacoes';
     const souAdmin = g.adminId===me;
+    const estagioAtual = ESTAGIOS_FUT.find(e=>e.key===estagioAtualPartida(m)) || ESTAGIOS_FUT[0];
     return `
       <div class="row" style="align-items:flex-start;">
         <button class="btn btn-ghost btn-sm" data-open-group="${g.id}" style="margin-bottom:12px;">← ${g.name}</button>
@@ -2669,11 +2676,20 @@ function traduzErroAuth(e){
       </div>
       <h1 class="page-title">📅 ${fmtDate(m.date)}</h1>
       <p class="lead">⏰ ${m.time} · 📍 ${m.local}</p>
-      <div class="chip-row" style="margin-bottom:16px;">
-        <div class="chip ${tab==='confirmacoes'?'active':''}" data-mtab="confirmacoes">✅ Confirmações</div>
-        <div class="chip ${tab==='partida'?'active':''}" data-mtab="partida">🔴 Partida</div>
-        <div class="chip ${tab==='avaliacoes'?'active':''}" data-mtab="avaliacoes">⭐ Avaliações</div>
+      <div class="list-row" data-action="abrir-eventos-fut" style="cursor:pointer;background:var(--bg2);border-radius:12px;margin-bottom:16px;">
+        <div class="name" style="flex:1;">🎬 Eventos do Fut · ${estagioAtual.label}</div>
+        <div class="meta">▾</div>
       </div>
+      ${ui.eventosFutMenuAberto ? `
+        <div class="modal-bg" data-close-eventos-fut="1"><div class="modal" onclick="event.stopPropagation()">
+          <div class="modal-handle"></div>
+          <div class="eyebrow" style="margin-bottom:8px;">🎬 Eventos do Fut</div>
+          ${ESTAGIOS_FUT.map(e=>`
+            <div class="list-row" data-estagio="${e.key}" style="cursor:pointer;">
+              <div class="name" style="flex:1;">${e.label}</div>
+              ${estagioAtual.key===e.key?'<div>✅</div>':''}
+            </div>`).join('')}
+        </div></div>` : ''}
       ${ui.menuPartidaAberto ? renderMenuPartida(m,g) : ''}
       ${ui.modal==='adicionar-convidado' ? renderModalAdicionarConvidado(m,g) : ''}
       ${ui.modal==='alterar-pelada' ? renderModalAlterarPelada(m,g) : ''}
@@ -2785,9 +2801,6 @@ function traduzErroAuth(e){
   function renderTabPartidaSequencial(m,g){
     const sub = ui.matchSubTab || subEstagioPadrao(m);
     const souAdmin = g.adminId===me;
-    const passos = [ {key:'chegadas', label:'📍 Chegadas'}, {key:'times', label:'⚖️ Times'}, {key:'acoes', label:'🔴 Ao vivo'} ];
-    const liberadoAte = m.times ? 2 : 0; // chegadas sempre liberado; times só depois de chegadas; ao vivo só depois de sortear
-    const idx = passos.findIndex(p=>p.key===sub);
     let conteudo, continuar='';
     if(sub==='chegadas'){
       conteudo = renderTabChegadas(m,g);
@@ -2797,22 +2810,7 @@ function traduzErroAuth(e){
     } else {
       conteudo = renderTabAcoes(m,g);
     }
-    const atual = passos.find(p=>p.key===sub) || passos[0];
     return `
-      <div class="list-row" data-action="abrir-eventos-fut" style="cursor:pointer;background:var(--bg2);border-radius:12px;margin-bottom:12px;">
-        <div class="name" style="flex:1;">🎬 Eventos do Fut · ${atual.label}</div>
-        <div class="meta">▾</div>
-      </div>
-      ${ui.eventosFutMenuAberto ? `
-        <div class="modal-bg" data-close-eventos-fut="1"><div class="modal" onclick="event.stopPropagation()">
-          <div class="modal-handle"></div>
-          <div class="eyebrow" style="margin-bottom:8px;">🎬 Eventos do Fut</div>
-          ${passos.map(p=>`
-            <div class="list-row" data-msub="${p.key}" data-fechar-eventos-fut="1" style="cursor:pointer;">
-              <div class="name" style="flex:1;">${p.label}</div>
-              ${sub===p.key?'<div>✅</div>':''}
-            </div>`).join('')}
-        </div></div>` : ''}
       ${conteudo}
       ${continuar}
     `;
@@ -5335,8 +5333,14 @@ function traduzErroAuth(e){
       if(navigator.clipboard) navigator.clipboard.writeText(a.chavePix).catch(()=>{});
       showToast('Chave PIX copiada!');
     };
-    document.querySelectorAll('[data-mtab]').forEach(el=> el.onclick = ()=>{ ui.matchTab = el.dataset.mtab; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.mercadoSub=null; render(); });
-    document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.eventosFutMenuAberto=false; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.pedirFalha=null; ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; ui.menuTimeIdx=null; ui.escolherCorTimeIdx=null; render(); });
+    document.querySelectorAll('[data-estagio]').forEach(el=> el.onclick = ()=>{
+      const key = el.dataset.estagio;
+      ui.eventosFutMenuAberto=false; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.pedirFalha=null;
+      ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; ui.menuTimeIdx=null; ui.escolherCorTimeIdx=null; ui.mercadoSub=null;
+      if(key==='confirmacoes' || key==='avaliacoes'){ ui.matchTab = key; }
+      else { ui.matchTab='partida'; ui.matchSubTab = key; }
+      render();
+    });
     const abrirEventosFutBtn = document.querySelector('[data-action="abrir-eventos-fut"]');
     if(abrirEventosFutBtn) abrirEventosFutBtn.onclick = ()=>{ ui.eventosFutMenuAberto = true; render(); };
     document.querySelectorAll('[data-close-eventos-fut]').forEach(el=> el.onclick = ()=>{ ui.eventosFutMenuAberto = false; render(); });
@@ -5462,7 +5466,7 @@ function traduzErroAuth(e){
         if(reservas.length) showToast(`Times sorteados! ${reservas.length} de reserva.`); else showToast('Times sorteados!');
         m.status = 'sorteada';
         ui.modal = null; ui.draftSorteioConfig = null;
-        ui.matchSubTab = 'times';
+        ui.matchSubTab = 'acoes';
         logAtividade(g, 'sorteou os times');
         await saveData(); render();
       };
