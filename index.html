@@ -1773,10 +1773,13 @@ function traduzErroAuth(e){
       </div>
     `;
   }
-  function logAtividade(g, texto){
+  function logAtividade(g, texto, extra){
     g.historico = g.historico || [];
-    g.historico.unshift({ ts: new Date().toISOString(), autor: me, texto });
+    const entry = { id: uid(), ts: new Date().toISOString(), autor: me, texto };
+    if(extra) Object.assign(entry, extra);
+    g.historico.unshift(entry);
     if(g.historico.length>200) g.historico.length = 200;
+    return entry;
   }
   // histórico de eventos ao vivo da partida (gol, cartão, falha etc.), mostrado abaixo dos times na aba Partida.
   // guarda dados suficientes (pid/ev/team/cor/falhaTipo/assistPid) pra dar pra desfazer o evento depois.
@@ -1858,7 +1861,10 @@ function traduzErroAuth(e){
             const d = new Date(h.ts);
             const dataStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
             const horaStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-            return `<div class="list-row"><div style="flex:1;"><div class="name">${autor?autor.name:'Alguém'} ${h.texto}</div><div class="meta">${dataStr} · ${horaStr}</div></div></div>`;
+            const podeReverter = h.tipo==='desmarcou-pelada' && h.matchSnapshot && !h.revertido;
+            return `<div class="list-row"><div style="flex:1;"><div class="name">${autor?autor.name:'Alguém'} ${h.texto}</div><div class="meta">${dataStr} · ${horaStr}</div></div>
+              ${podeReverter ? `<button class="btn btn-ghost btn-sm" data-reverter-atividade="${h.id}" data-gid="${g.id}">↩️ Reverter</button>` : (h.tipo==='desmarcou-pelada' && h.revertido ? `<span class="meta">Revertido</span>` : '')}
+            </div>`;
           }).join('')}
         </div>`}
     `;
@@ -2765,6 +2771,8 @@ function traduzErroAuth(e){
             </div>`).join('')}
         </div></div>` : ''}
       ${ui.menuPartidaAberto ? renderMenuPartida(m,g) : ''}
+      ${ui.modal==='confirmar-desmarcar-pelada' ? renderModalConfirmarDesmarcarPelada(m,g) : ''}
+      ${ui.modal==='confirmacao-generica' ? renderModalConfirmacaoGenerica() : ''}
       ${ui.modal==='adicionar-convidado' ? renderModalAdicionarConvidado(m,g) : ''}
       ${ui.modal==='alterar-pelada' ? renderModalAlterarPelada(m,g) : ''}
       ${ui.modal==='config-sorteio' ? renderModalConfigSorteio(m,g) : ''}
@@ -2783,6 +2791,43 @@ function traduzErroAuth(e){
         <div class="list-row" data-action="menu-compartilhar" style="cursor:pointer;"><div class="name">🔗 Compartilhar</div></div>
         <div class="list-row" data-action="menu-alterar-pelada" style="cursor:pointer;"><div class="name">✏️ Alterar pelada</div></div>
         <div class="list-row" data-action="menu-desmarcar-pelada" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Desmarcar pelada</div></div>
+      </div></div>
+    `;
+  }
+  // Modal de confirmação genérico — substitui o confirm() nativo do navegador em ações destrutivas.
+  // Em PWA instalado no iOS/Safari o confirm() pode travar a página inteira ou nunca aparecer,
+  // deixando menus presos abertos e a ação sem efeito nenhum. Passe onConfirm como uma função async.
+  function abrirConfirmacao(titulo, mensagem, onConfirm, textoConfirmar){
+    ui.confirmAction = { titulo, mensagem, textoConfirmar: textoConfirmar||'Sim, remover', onConfirm };
+    ui.modal = 'confirmacao-generica';
+    render();
+  }
+  function renderModalConfirmacaoGenerica(){
+    const c = ui.confirmAction;
+    if(!c) return '';
+    return `
+      <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:22px;">${c.titulo}</h1>
+        <p class="lead">${c.mensagem}</p>
+        <div class="row" style="gap:10px;margin-top:16px;">
+          <button class="btn btn-ghost btn-block" data-close-modal="1">Cancelar</button>
+          <button class="btn btn-danger btn-block" data-action="confirmar-acao-generica">${c.textoConfirmar}</button>
+        </div>
+      </div></div>
+    `;
+  }
+  function renderModalConfirmarDesmarcarPelada(m,g){
+    return `
+      <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:22px;">🗑️ Desmarcar pelada?</h1>
+        <p class="lead">${g.name} · 📅 ${fmtDate(m.date)} · ⏰ ${m.time}</p>
+        <p class="lead">Isso remove a pelada da lista. Se for engano, dá pra reverter depois em Configurações → Histórico de atividades.</p>
+        <div class="row" style="gap:10px;margin-top:16px;">
+          <button class="btn btn-ghost btn-block" data-close-modal="1">Cancelar</button>
+          <button class="btn btn-danger btn-block" data-action="confirmar-desmarcar-pelada">Sim, desmarcar</button>
+        </div>
       </div></div>
     `;
   }
@@ -4430,6 +4475,7 @@ function traduzErroAuth(e){
     if(ui.modal==='dar-baixa') return renderModalDarBaixaJogador();
     if(ui.modal==='marcar-churrasco') return renderModalMarcarChurrasco();
     if(ui.modal==='instalar-app') return renderModalInstalarApp();
+    if(ui.modal==='confirmacao-generica') return renderModalConfirmacaoGenerica();
     return '';
   }
   function renderModalInstalarApp(){
@@ -4770,12 +4816,14 @@ function traduzErroAuth(e){
       ui.resumoMenuAberto=false; render();
     };
     const resumoRemoverBtn = document.querySelector('[data-action="resumo-remover-pelada"]');
-    if(resumoRemoverBtn) resumoRemoverBtn.onclick = async ()=>{
+    if(resumoRemoverBtn) resumoRemoverBtn.onclick = ()=>{
       if(!souAdminAssoc()) return;
-      if(!confirm('Remover essa pelada do histórico? Essa ação não pode ser desfeita.')) return;
-      data.matches = data.matches.filter(mm=>mm.id!==ui.resumoMatchId);
-      ui.resumoMenuAberto=false; ui.resumoMatchId=null; ui.resumoVoltarFutDia=null; ui.resenhaSub='peladas'; view='resenha';
-      await saveData(); showToast('Pelada removida.'); render();
+      ui.resumoMenuAberto=false;
+      abrirConfirmacao('🗑️ Remover pelada?', 'Remove essa pelada do histórico. Essa ação não pode ser desfeita.', async ()=>{
+        data.matches = data.matches.filter(mm=>mm.id!==ui.resumoMatchId);
+        ui.resumoMatchId=null; ui.resumoVoltarFutDia=null; ui.resenhaSub='peladas'; view='resenha';
+        await saveData(); showToast('Pelada removida.'); render();
+      });
     };
 
     // ---- Churrascos ----
@@ -4815,13 +4863,15 @@ function traduzErroAuth(e){
     if(churrascoAbrirMenuBtn) churrascoAbrirMenuBtn.onclick = ()=>{ ui.churrascoMenuAberto=true; render(); };
     document.querySelectorAll('[data-close-churrasco-menu]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.churrascoMenuAberto=false; render(); } });
     const churrascoRemoverBtn = document.querySelector('[data-action="churrasco-remover"]');
-    if(churrascoRemoverBtn) churrascoRemoverBtn.onclick = async ()=>{
+    if(churrascoRemoverBtn) churrascoRemoverBtn.onclick = ()=>{
       if(!souAdminAssoc()) return;
-      if(!confirm('Remover esse churrasco? Essa ação não pode ser desfeita.')) return;
-      const a = associacaoAtual();
-      a.churrascos = (a.churrascos||[]).filter(c=>c.id!==ui.churrascoId);
-      ui.churrascoMenuAberto=false; ui.churrascoId=null; ui.resenhaSub='churrascos';
-      await saveData(); showToast('Churrasco removido.'); render();
+      ui.churrascoMenuAberto=false;
+      abrirConfirmacao('🗑️ Remover churrasco?', 'Essa ação não pode ser desfeita.', async ()=>{
+        const a = associacaoAtual();
+        a.churrascos = (a.churrascos||[]).filter(c=>c.id!==ui.churrascoId);
+        ui.churrascoId=null; ui.resenhaSub='churrascos';
+        await saveData(); showToast('Churrasco removido.'); render();
+      });
     };
     document.querySelectorAll('[data-churrasco-confirmar]').forEach(el=> el.onclick = async ()=>{
       const a = associacaoAtual(); a.churrascos = a.churrascos || [];
@@ -5118,6 +5168,15 @@ function traduzErroAuth(e){
 
     // ---- Histórico de atividades ----
     document.querySelectorAll('[data-hist-filtro]').forEach(el=> el.onclick = ()=>{ ui.histFiltroFut = el.dataset.histFiltro; render(); });
+    document.querySelectorAll('[data-reverter-atividade]').forEach(el=> el.onclick = async ()=>{
+      const g = groupById(el.dataset.gid); if(!g) return;
+      const h = (g.historico||[]).find(x=>x.id===el.dataset.reverterAtividade);
+      if(!h || !h.matchSnapshot || h.revertido) return;
+      const jaExiste = data.matches.some(mm=>mm.id===h.matchSnapshot.id);
+      if(!jaExiste) data.matches.push(desempacotarTimesMatch(h.matchSnapshot));
+      h.revertido = true;
+      await saveData(); showToast('Pelada restaurada.'); render();
+    });
 
     // ---- Configurar Formação ----
     if(ui.futConfigSub==='formacao' && ui.draftFormacao){
@@ -5215,7 +5274,12 @@ function traduzErroAuth(e){
       await saveData(); showToast('Fut marcado! Confirmações abertas.'); render();
     };
 
-    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; ui.jogadorAcoesId=null; ui.draftTransacao=null; ui.draftCobranca=null; ui.draftBaixa=null; ui.finBaixaJogadorId=null; ui.draftSorteioConfig=null; render(); } });
+    document.querySelectorAll('[data-close-modal]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; ui.draftGroup=null; ui.draftMatch=null; ui.draftMarcarFut=null; ui.draftAlterarPelada=null; ui.draftConvidado=null; ui.jogadorAcoesId=null; ui.draftTransacao=null; ui.draftCobranca=null; ui.draftBaixa=null; ui.finBaixaJogadorId=null; ui.draftSorteioConfig=null; ui.confirmAction=null; render(); } });
+    const confirmarAcaoGenericaBtn = document.querySelector('[data-action="confirmar-acao-generica"]');
+    if(confirmarAcaoGenericaBtn) confirmarAcaoGenericaBtn.onclick = async ()=>{
+      const c = ui.confirmAction; ui.modal=null; ui.confirmAction=null;
+      if(c && c.onConfirm) await c.onConfirm();
+    };
 
     // ---- Jogadores da associação ----
     const buscaAssocJogadorInput = document.getElementById('assoc-busca-jogador');
@@ -5566,12 +5630,18 @@ function traduzErroAuth(e){
       ui.menuPartidaAberto=false; ui.draftAlterarPelada=null; ui.modal='alterar-pelada'; render();
     };
     const menuDesmarcarBtn = document.querySelector('[data-action="menu-desmarcar-pelada"]');
-    if(menuDesmarcarBtn) menuDesmarcarBtn.onclick = async ()=>{
-      if(!confirm('Desmarcar essa pelada? Essa ação não pode ser desfeita.')) return;
+    if(menuDesmarcarBtn) menuDesmarcarBtn.onclick = ()=>{
+      // usamos um modal próprio em vez de confirm() nativo: em PWA instalado no iOS/Safari o
+      // confirm() do navegador pode travar ou nunca aparecer, deixando o menu preso aberto.
+      ui.menuPartidaAberto=false; ui.modal='confirmar-desmarcar-pelada'; render();
+    };
+    const confirmarDesmarcarBtn = document.querySelector('[data-action="confirmar-desmarcar-pelada"]');
+    if(confirmarDesmarcarBtn) confirmarDesmarcarBtn.onclick = async ()=>{
       const m = matchById(ui.matchId); const g = groupById(m.groupId);
-      logAtividade(g, 'desmarcou a pelada de '+fmtDate(m.date));
+      if(!m || !g) return;
+      logAtividade(g, 'desmarcou a pelada de '+fmtDate(m.date), { tipo:'desmarcou-pelada', matchSnapshot: empacotarTimesMatch(m) });
       data.matches = data.matches.filter(mm=>mm.id!==m.id);
-      ui.menuPartidaAberto=false; ui.matchId=null;
+      ui.modal=null; ui.matchId=null;
       await saveData(); showToast('Pelada desmarcada.'); view='grupo-detalhe'; render();
     };
 
@@ -6104,12 +6174,19 @@ function traduzErroAuth(e){
       await saveData(); showToast('Cartão registrado'); render();
     });
 
-    document.querySelectorAll('[data-remover-evento]').forEach(el=> el.onclick = async ()=>{
+    document.querySelectorAll('[data-remover-evento]').forEach(el=> el.onclick = ()=>{
       const m = matchById(ui.matchId);
       const idx = parseInt(el.dataset.removerEvento);
       const ev = (m.eventos||[])[idx];
       if(!ev) return;
-      if(!confirm('Remover este evento e desfazer a estatística registrada?')) return;
+      abrirConfirmacao('🗑️ Remover evento?', 'Isso desfaz a estatística registrada com ele.', async ()=>{
+        removerEventoDaPartida(ui.matchId, idx);
+      });
+    });
+    async function removerEventoDaPartida(matchId, idx){
+      const m = matchById(matchId);
+      const ev = m && (m.eventos||[])[idx];
+      if(!ev) return;
       m.statsJogo = m.statsJogo || {};
       if(ev.tipo==='evento' && ev.pid){
         m.statsJogo[ev.pid] = m.statsJogo[ev.pid] || {};
@@ -6142,7 +6219,7 @@ function traduzErroAuth(e){
       // substituição/troca: remove só a linha do histórico, sem desfazer a troca de jogador
       m.eventos.splice(idx,1);
       await saveData(); showToast('Evento removido!'); render();
-    });
+    }
 
     const iniciarTimerBtn = document.querySelector('[data-action="iniciar-timer"]');
     if(iniciarTimerBtn) iniciarTimerBtn.onclick = async ()=>{
