@@ -36,30 +36,31 @@ html[data-theme="escuro"]{
   --ring-soft:rgba(255,255,255,.16);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;height:100%;overflow:hidden;}
 body,.root{
   margin:0;
+  height:100%;
   background:
     radial-gradient(circle at 15% 0%, var(--bg-glow) 0%, transparent 55%),
     repeating-linear-gradient(90deg, var(--bg-texture) 0 1px, transparent 1px 64px),
     var(--bg);
   color:var(--ink);
   font-family:'Inter',sans-serif;
-  min-height:100vh;
-  min-height:100dvh;
-  overflow-x:hidden;
+  overflow:hidden;
 }
-.app{max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;position:relative;}
+/* .app nunca rola por si só — só o .content rola. Isso trava a barra de baixo no lugar,
+   inclusive no Safari/iOS onde a barra de endereço some/aparece e mexe no 100vh. */
+.app{max-width:480px;margin:0 auto;height:100%;height:100dvh;display:flex;flex-direction:column;position:relative;overflow:hidden;}
 .display{font-family:'Bebas Neue',sans-serif;letter-spacing:.5px;}
 .topbar{
   padding:calc(22px + env(safe-area-inset-top)) 20px 14px;
   display:flex;align-items:center;justify-content:space-between;
   border-bottom:1px solid var(--line);
 }
-.brand{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;display:flex;align-items:center;gap:8px;}
+.brand{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:2px;display:flex;align-items:center;gap:8px;}
 .brand .ball{font-size:22px;display:flex;align-items:center;}
 .brand .ball svg{width:24px;height:24px;display:block;}
-.brand sub, .brand-sub{font-family:'Inter';font-size:10px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-top:-2px;}
+.brand sub, .brand-sub{font-family:'Inter';font-size:13px;letter-spacing:.8px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-top:0;}
 .avatar{
   width:38px;height:38px;border-radius:50%;
   background:linear-gradient(160deg,var(--gold),#b98a1f);
@@ -67,7 +68,7 @@ body,.root{
   font-family:'Bebas Neue';font-size:16px;cursor:pointer;flex-shrink:0;
   border:2px solid var(--ring-soft);
 }
-.content{flex:1;padding:18px 20px calc(100px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.content{flex:1;min-height:0;padding:18px 20px calc(112px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;}
 h1.page-title{font-family:'Bebas Neue';font-size:30px;letter-spacing:1.2px;margin:4px 0 4px;}
 .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--gold);font-weight:800;margin-bottom:6px;}
 p.lead{color:var(--ink-dim);font-size:13.5px;line-height:1.5;margin:0 0 18px;}
@@ -150,25 +151,29 @@ input:focus,select:focus{outline:none;border-color:var(--gold);}
   background:repeating-linear-gradient(90deg,var(--line) 0 8px, transparent 8px 16px);
 }
 
+/* Barra fixa na viewport (não no fluxo do documento) — trava de vez, não rola nunca,
+   independente do endereço do navegador aparecer/sumir no mobile. */
 .nav{
-  position:sticky;bottom:0;left:0;right:0;
+  position:fixed;left:50%;bottom:0;transform:translateX(-50%);
   background:var(--nav-bg);backdrop-filter:blur(10px);
   border-top:1px solid var(--line);
-  display:flex;justify-content:space-around;padding:10px 6px calc(14px + env(safe-area-inset-bottom));
-  max-width:480px;margin:0 auto;width:100%;
+  display:flex;justify-content:space-around;padding:8px 6px calc(10px + env(safe-area-inset-bottom));
+  max-width:480px;width:100%;
+  z-index:40;
 }
 .nav-item{
-  background:none;border:none;color:var(--ink-dim);font-family:'Inter';font-size:10.5px;font-weight:700;
-  display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 8px;flex:1;
+  background:none;border:none;color:var(--ink-dim);font-family:'Inter';font-weight:700;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;padding:6px;flex:1;
 }
 .nav-item .ic{
-  font-size:16px;width:30px;height:30px;border-radius:10px;
+  font-size:24px;width:48px;height:48px;border-radius:14px;
   display:flex;align-items:center;justify-content:center;
   background:var(--bg2);border:1px solid transparent;
-  transition:border-color .15s ease, background-color .15s ease;
+  transition:border-color .15s ease, background-color .15s ease, transform .1s ease;
 }
+.nav-item:active .ic{transform:scale(.92);}
 .nav-item.active{color:var(--gold);}
-.nav-item.active .ic{border-color:rgba(228,185,76,.5);background:rgba(228,185,76,.14);}
+.nav-item.active .ic{border-color:rgba(228,185,76,.5);background:rgba(228,185,76,.16);}
 
 .badge{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.5px;}
 .badge-open{background:rgba(228,185,76,.18);color:var(--gold);}
@@ -230,6 +235,11 @@ input:focus,select:focus{outline:none;border-color:var(--gold);}
 .icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);
   color:var(--ink);font-size:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
 .icon-btn:hover{border-color:var(--gold);color:var(--gold);}
+/* Versão compacta pro mesmo botão dentro de linhas apertadas (títulos de time, linhas de histórico) */
+.icon-btn-sm{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);
+  color:var(--ink);font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+.icon-btn-sm:hover{border-color:var(--gold);color:var(--gold);}
+.icon-btn-sm.danger:hover{border-color:#e8917a;color:#e8917a;}
 .hist-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);}
 .hist-row:last-child{border-bottom:none;}
 .hist-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
