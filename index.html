@@ -94,6 +94,25 @@ function traduzErroAuth(e){
     document.documentElement.setAttribute('data-theme', temaAtualEscuro() ? 'escuro' : 'padrao');
   }
 
+  // ---------- Atualizar app / limpar cache ----------
+  async function limparCacheEAtualizar(){
+    try{
+      if(navigator.serviceWorker){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for(const r of regs){ await r.unregister(); }
+      }
+    }catch(e){}
+    try{
+      if(window.caches){
+        const keys = await caches.keys();
+        for(const k of keys){ await caches.delete(k); }
+      }
+    }catch(e){}
+    const url = new URL(location.href);
+    url.searchParams.set('_r', Date.now().toString());
+    location.href = url.toString();
+  }
+
   // ---------- Instalar como app (PWA) ----------
   let deferredInstallPrompt = null;
   function appRodandoInstalado(){
@@ -4262,6 +4281,9 @@ function traduzErroAuth(e){
         <div class="list-row">
           <div class="name" style="flex:1;">📲 Aplicativo instalado</div><div class="meta">✅</div>
         </div>` : ''}
+        <div class="list-row" data-action="atualizar-app" style="cursor:pointer;">
+          <div style="flex:1;"><div class="name">🔄 Atualizar aplicativo</div><div class="meta">Limpa o cache e recarrega a versão mais recente.</div></div>
+        </div>
       </div>
       <button class="btn btn-ghost btn-block" style="margin-top:16px;" data-action="logout">Sair</button>
     `;
@@ -5295,6 +5317,12 @@ function traduzErroAuth(e){
       try{ localStorage.setItem(TEMA_STORAGE_KEY, p.temaEscuro ? '1' : '0'); }catch(e){}
       aplicarTema();
       await saveData(); render();
+    };
+
+    const atualizarAppBtn = document.querySelector('[data-action="atualizar-app"]');
+    if(atualizarAppBtn) atualizarAppBtn.onclick = ()=>{
+      atualizarAppBtn.querySelector('.meta').textContent = 'Atualizando…';
+      limparCacheEAtualizar();
     };
 
     document.querySelectorAll('[data-fin-marcar-atraso]').forEach(el=> el.onclick = async ()=>{
