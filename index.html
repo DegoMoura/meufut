@@ -1685,11 +1685,16 @@ function traduzErroAuth(e){
     g.historico.unshift({ ts: new Date().toISOString(), autor: me, texto });
     if(g.historico.length>200) g.historico.length = 200;
   }
-  // histórico de eventos ao vivo da partida (gol, cartão, falha etc.), mostrado abaixo dos times na aba Partida
-  function logEvento(m, nome, label, detalhe){
+  // histórico de eventos ao vivo da partida (gol, cartão, falha etc.), mostrado abaixo dos times na aba Partida.
+  // guarda dados suficientes (pid/ev/team/cor/falhaTipo/assistPid) pra dar pra desfazer o evento depois.
+  function logEvento(m, opts){
     m.eventos = m.eventos || [];
-    m.eventos.unshift({ nome, label, detalhe: detalhe||null, elapsedMs: timerElapsedMs(m) });
+    const entry = { nome: opts.nome, label: opts.label, detalhe: opts.detalhe||null, elapsedMs: timerElapsedMs(m),
+      tipo: opts.tipo||'evento', pid: opts.pid||null, ev: opts.ev||null, team: opts.team||null, cor: opts.cor||null,
+      falhaTipo: opts.falhaTipo||null, assistPid: opts.assistPid||null };
+    m.eventos.unshift(entry);
     if(m.eventos.length>300) m.eventos.length = 300;
+    return entry;
   }
   function renderConfigJogadoresRoot(){
     return `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` + renderJogadoresBody();
@@ -3095,13 +3100,14 @@ function traduzErroAuth(e){
       <div class="eyebrow" style="margin-top:14px;">📜 Histórico da partida</div>
       <div class="card">
         ${historico.length===0 ? `<p class="lead" style="margin:0;">Nenhum evento registrado ainda.</p>` :
-          historico.map(ev=>`
+          historico.map((ev,i)=>`
             <div class="list-row">
               <div style="flex:1;">
                 <div class="name">${ev.nome}</div>
                 <div class="meta">${ev.label}${ev.detalhe?' · '+ev.detalhe:''}</div>
               </div>
               <div class="meta">${fmtTimer(ev.elapsedMs||0)}</div>
+              ${souAdmin ? `<div data-remover-evento="${i}" title="Remover evento" style="cursor:pointer;color:var(--ink-dim);margin-left:8px;font-size:16px;">🗑️</div>` : ''}
             </div>`).join('')}
       </div>
     `;
@@ -3125,7 +3131,7 @@ function traduzErroAuth(e){
       {ev:'falha', label:'😬 Falha', abrirFalha:true}, {ev:'golContra', label:'🔴 Gol contra'},
     ];
     const botoesGoleiro = [
-      {ev:'defesa', label:'🧤 Defesa'}, {ev:'defesaDificil', label:'🧤 Defesa difícil'}, {ev:'golSofrido', label:'😬 Gol sofrido'},
+      {ev:'gol', label:'⚽ Gol'}, {ev:'defesa', label:'🧤 Defesa'}, {ev:'defesaDificil', label:'🧤 Defesa difícil'}, {ev:'golSofrido', label:'😬 Gol sofrido'},
       {ev:'falha', label:'😬 Falha', abrirFalha:true}, {ev:'penaltiCometido', label:'⚠️ Pênalti cometido'}, {ev:'penaltiDefendido', label:'🙌 Pênalti defendido'},
     ];
     const botoesCartao = [
@@ -5550,7 +5556,7 @@ function traduzErroAuth(e){
       if(ev==='gol'){
         m.placar[team] += 1;
         m.golsPorJogador[pid] = (m.golsPorJogador[pid]||0)+1;
-        logEvento(m, pl.name, label, null);
+        logEvento(m, { nome: pl.name, label, pid, ev, team, tipo:'evento' });
         ui.pedirAssistencia = {pid, team};
         ui.resultadoJogadorId = null;
         await saveData(); render();
@@ -5560,7 +5566,7 @@ function traduzErroAuth(e){
         const adversario = team==='A' ? 'B' : 'A';
         m.placar[adversario] += 1;
       }
-      logEvento(m, pl.name, label, null);
+      logEvento(m, { nome: pl.name, label, pid, ev, team, tipo:'evento' });
       await saveData(); showToast('Registrado!'); render();
     });
 
@@ -5571,7 +5577,7 @@ function traduzErroAuth(e){
         m.statsJogo = m.statsJogo || {};
         m.statsJogo[val] = m.statsJogo[val] || {};
         m.statsJogo[val].assistencia = (m.statsJogo[val].assistencia||0)+1;
-        if(m.eventos && m.eventos[0]) m.eventos[0].detalhe = 'Passe de: ' + (playerById(val)?.name||'');
+        if(m.eventos && m.eventos[0]){ m.eventos[0].detalhe = 'Passe de: ' + (playerById(val)?.name||''); m.eventos[0].assistPid = val; }
       }
       ui.pedirAssistencia = null;
       await saveData(); render();
@@ -5591,7 +5597,7 @@ function traduzErroAuth(e){
       m.statsJogo[pedir.pid] = m.statsJogo[pedir.pid] || {};
       m.statsJogo[pedir.pid].falha = (m.statsJogo[pedir.pid].falha||0)+1;
       m.statsJogo[pedir.pid].falhaTipos = [...(m.statsJogo[pedir.pid].falhaTipos||[]), tipo];
-      logEvento(m, pl.name, '😬 Falha', tipoObj ? tipoObj.label : null);
+      logEvento(m, { nome: pl.name, label:'😬 Falha', detalhe: tipoObj?tipoObj.label:null, pid: pedir.pid, tipo:'falha', falhaTipo: tipo });
       ui.pedirFalha = null; ui.resultadoJogadorId = null;
       await saveData(); showToast('Falha registrada!'); render();
     });
@@ -5624,7 +5630,7 @@ function traduzErroAuth(e){
       const nomeSaiu = playerById(sub.saiuId)?.name || '';
       const nomeEntrou = playerById(entrouId)?.name || '';
       logAtividade(g, sub.tipo==='substituicao' ? `substituiu ${nomeSaiu} por ${nomeEntrou}` : `trocou ${nomeSaiu} por ${nomeEntrou} (correção, sem crédito pra quem saiu)`);
-      logEvento(m, nomeEntrou, sub.tipo==='substituicao' ? '🔄 Substituição' : '↔️ Troca', `entrou no lugar de ${nomeSaiu}`);
+      logEvento(m, { nome: nomeEntrou, label: sub.tipo==='substituicao' ? '🔄 Substituição' : '↔️ Troca', detalhe: `entrou no lugar de ${nomeSaiu}`, tipo:'substituicao' });
       ui.substituicaoPendente = null; ui.resultadoJogadorId = null;
       await saveData(); showToast(sub.tipo==='substituicao' ? 'Substituição feita!' : 'Jogador trocado!'); render();
     });
@@ -5636,8 +5642,48 @@ function traduzErroAuth(e){
       m.cartoes = m.cartoes || {};
       m.cartoes[pid] = m.cartoes[pid] || {amarelo:0,vermelho:0,azul:0};
       m.cartoes[pid][cor] += 1;
-      logEvento(m, pl.name, `Cartão ${label}`, null);
+      logEvento(m, { nome: pl.name, label: `Cartão ${label}`, pid, cor, tipo:'cartao' });
       await saveData(); showToast('Cartão registrado'); render();
+    });
+
+    document.querySelectorAll('[data-remover-evento]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId);
+      const idx = parseInt(el.dataset.removerEvento);
+      const ev = (m.eventos||[])[idx];
+      if(!ev) return;
+      if(!confirm('Remover este evento e desfazer a estatística registrada?')) return;
+      m.statsJogo = m.statsJogo || {};
+      if(ev.tipo==='evento' && ev.pid){
+        m.statsJogo[ev.pid] = m.statsJogo[ev.pid] || {};
+        if(ev.ev){
+          m.statsJogo[ev.pid][ev.ev] = Math.max(0, (m.statsJogo[ev.pid][ev.ev]||0)-1);
+        }
+        if(ev.ev==='gol'){
+          m.placar[ev.team] = Math.max(0, (m.placar[ev.team]||0)-1);
+          m.golsPorJogador[ev.pid] = Math.max(0, (m.golsPorJogador[ev.pid]||0)-1);
+          if(ev.assistPid){
+            m.statsJogo[ev.assistPid] = m.statsJogo[ev.assistPid] || {};
+            m.statsJogo[ev.assistPid].assistencia = Math.max(0, (m.statsJogo[ev.assistPid].assistencia||0)-1);
+          }
+        } else if(ev.ev==='golSofrido' || ev.ev==='golContra'){
+          const adversario = ev.team==='A' ? 'B' : 'A';
+          m.placar[adversario] = Math.max(0, (m.placar[adversario]||0)-1);
+        }
+      } else if(ev.tipo==='falha' && ev.pid){
+        m.statsJogo[ev.pid] = m.statsJogo[ev.pid] || {};
+        m.statsJogo[ev.pid].falha = Math.max(0, (m.statsJogo[ev.pid].falha||0)-1);
+        if(ev.falhaTipo && m.statsJogo[ev.pid].falhaTipos){
+          const pos = m.statsJogo[ev.pid].falhaTipos.indexOf(ev.falhaTipo);
+          if(pos>=0) m.statsJogo[ev.pid].falhaTipos.splice(pos,1);
+        }
+      } else if(ev.tipo==='cartao' && ev.pid && ev.cor){
+        m.cartoes = m.cartoes || {};
+        m.cartoes[ev.pid] = m.cartoes[ev.pid] || {amarelo:0,vermelho:0,azul:0};
+        m.cartoes[ev.pid][ev.cor] = Math.max(0, (m.cartoes[ev.pid][ev.cor]||0)-1);
+      }
+      // substituição/troca: remove só a linha do histórico, sem desfazer a troca de jogador
+      m.eventos.splice(idx,1);
+      await saveData(); showToast('Evento removido!'); render();
     });
 
     const iniciarTimerBtn = document.querySelector('[data-action="iniciar-timer"]');
