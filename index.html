@@ -2694,6 +2694,7 @@ function traduzErroAuth(e){
       ${ui.modal==='adicionar-convidado' ? renderModalAdicionarConvidado(m,g) : ''}
       ${ui.modal==='alterar-pelada' ? renderModalAlterarPelada(m,g) : ''}
       ${ui.modal==='config-sorteio' ? renderModalConfigSorteio(m,g) : ''}
+      ${ui.modal==='adicionar-jogador-time' ? renderModalAdicionarJogadorTime(m,g) : ''}
       ${tab==='confirmacoes' ? renderTabConfirmacoes(m,g) :
         tab==='partida' ? renderTabPartidaSequencial(m,g) :
         renderTabAvaliacoes(m,g)}
@@ -2969,7 +2970,7 @@ function traduzErroAuth(e){
     `;
   }
 
-  function renderLobbyActionBar(sel){
+  function renderLobbyActionBar(m, sel){
     const pl = playerById(sel.pid);
     return `
       <div class="card" style="margin-bottom:14px;border-color:var(--gold);">
@@ -2981,6 +2982,15 @@ function traduzErroAuth(e){
           <button class="btn btn-sm btn-ghost" data-action="lobby-nao-chegou" style="flex:1;min-width:90px;">❌ Não chegou</button>
         </div>
         ${ui.lobbyTroca ? `<p class="lead" style="margin:8px 0 0;color:var(--gold);">Toque em outro jogador pra completar a troca.</p>` : ''}
+        ${ui.lobbyMoverAberto ? `
+          <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;">
+            <p class="lead" style="margin:0 0 8px;">Mover ${pl?pl.name:''} pra qual time?</p>
+            ${m.times.map((_,i)=>i).filter(i=>i!==sel.timeIdx).map(i=>`
+              <div class="list-row" data-mover-jogador-time="${i}" style="cursor:pointer;">
+                <div class="name" style="color:${corTimeM(m,i)};flex:1;">${nomeTime(m,i)}</div>
+              </div>`).join('')}
+            <button class="btn btn-ghost btn-sm btn-block" style="margin-top:6px;" data-action="cancelar-mover-time">Cancelar</button>
+          </div>` : ''}
       </div>
     `;
   }
@@ -3019,6 +3029,7 @@ function traduzErroAuth(e){
     const tituloTime = (idx, cor) => `
       <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;">
         <span style="text-align:center;color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">${nomeTime(m,idx).toUpperCase()}</span>
+        ${podeMexer?`<button class="icon-btn" style="width:24px;height:24px;font-size:12px;" data-action="abrir-add-jogador-time" data-time-idx="${idx}" title="Adicionar jogador">➕</button>`:''}
         ${podeMexer?`<button class="icon-btn" style="width:24px;height:24px;font-size:12px;" data-action="abrir-menu-time" data-time-idx="${idx}">⋮</button>`:''}
       </div>`;
     let vsRows = '';
@@ -3034,6 +3045,7 @@ function traduzErroAuth(e){
       return `
         <div class="row" style="margin-top:16px;align-items:center;">
           <div class="eyebrow" style="margin:0;flex:1;color:${cor};">${nomeTime(m,idx)} <span style="color:var(--ink-dim);font-weight:600;">· Próximo a jogar</span></div>
+          ${podeMexer?`<button class="icon-btn" style="width:26px;height:26px;font-size:12px;" data-action="abrir-add-jogador-time" data-time-idx="${idx}" title="Adicionar jogador">➕</button>`:''}
           ${podeMexer?`<button class="icon-btn" style="width:26px;height:26px;font-size:12px;" data-action="abrir-menu-time" data-time-idx="${idx}">⋮</button>`:''}
         </div>
         <div class="card">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}</div>
@@ -3042,7 +3054,7 @@ function traduzErroAuth(e){
     return `
       <p class="lead" style="text-align:center;margin-bottom:10px;">Nº de sorteios: ${m.numSorteios||1}</p>
       ${podeMexer ? `<button class="btn btn-gold btn-block" style="margin-bottom:14px;" data-action="ir-ao-vivo">Iniciar partida</button>` : ''}
-      ${sel ? renderLobbyActionBar(sel) : ''}
+      ${sel ? renderLobbyActionBar(m, sel) : ''}
       ${(souAdmin && ui.menuTimeIdx!=null) ? renderMenuTime(m, ui.menuTimeIdx) : ''}
       ${(souAdmin && ui.escolherCorTimeIdx!=null) ? renderEscolherCorTime(ui.escolherCorTimeIdx) : ''}
       <div class="row" style="margin-bottom:2px;">
@@ -3056,6 +3068,38 @@ function traduzErroAuth(e){
           <button class="btn btn-ghost" style="flex:1;" data-action="abrir-config-sorteio">🔄 Sortear de novo</button>
           <button class="btn btn-ghost" style="flex:1;" data-action="compartilhar-times">📤 Compartilhar</button>
         </div>` : ''}
+    `;
+  }
+  // Modal pra preencher uma vaga que sobrou num time (ex: alguém marcado como "não chegou").
+  // Duas abas: quem já confirmou presença mas não está em nenhum time, e sócios que nem confirmaram
+  // ainda — porque na prática pode aparecer gente na quadra sem ter confirmado pelo app.
+  function renderModalAdicionarJogadorTime(m,g){
+    const timeIdx = ui.modalAddJogadorTimeIdx;
+    const tab = ui.addJogadorTab || 'confirmados';
+    const idsEmTimes = new Set((m.times||[]).flat());
+    const confirmadosDisponiveis = m.confirmed.filter(id=> !idsEmTimes.has(id));
+    const naoConfirmados = (g.memberIds||[]).filter(id=> !m.confirmed.includes(id) && !idsEmTimes.has(id));
+    const busca = (ui.addJogadorBusca||'').trim().toLowerCase();
+    const filtrar = ids => ids.map(playerById).filter(Boolean).filter(pl=> !busca || pl.name.toLowerCase().includes(busca));
+    const lista = tab==='confirmados' ? filtrar(confirmadosDisponiveis) : filtrar(naoConfirmados);
+    return `
+      <div class="modal-bg" data-close-add-jogador-time="1"><div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:20px;">➕ Adicionar a ${timeIdx!=null?nomeTime(m,timeIdx):''}</h1>
+        <div class="chip-row" style="margin-bottom:10px;">
+          <div class="chip ${tab==='confirmados'?'active':''}" data-add-jogador-tab="confirmados">✅ Confirmados (${confirmadosDisponiveis.length})</div>
+          <div class="chip ${tab==='naoConfirmados'?'active':''}" data-add-jogador-tab="naoConfirmados">❔ Não confirmados (${naoConfirmados.length})</div>
+        </div>
+        <input id="add-jogador-busca" type="text" placeholder="🔎 Buscar jogador..." value="${ui.addJogadorBusca||''}" style="width:100%;margin-bottom:10px;padding:10px;border-radius:10px;background:var(--bg2);color:var(--ink);border:1px solid var(--line);" />
+        <div class="card">
+          ${lista.length===0 ? `<p class="lead" style="margin:0;">Ninguém disponível aqui.</p>` :
+            lista.map(pl=>`
+              <div class="list-row" data-add-jogador-pid="${pl.id}" style="cursor:pointer;">
+                <div class="jersey" style="width:28px;height:28px;font-size:11px;">⭐${matchRating(m,pl)}</div>
+                <div class="name" style="flex:1;">${pl.name}</div>
+              </div>`).join('')}
+        </div>
+      </div></div>
     `;
   }
   function renderEscolherCorTime(idx){
@@ -3169,9 +3213,15 @@ function traduzErroAuth(e){
       return renderPainelEventos(m, pl, slot);
     })();
     const historico = (m.eventos||[]);
+    const aindaNaoComecou = elapsed===0 && !m.timer.rodando;
+    const podeTrocarTimeAntes = souAdmin && aindaNaoComecou && (m.filaIdx||[]).length>0;
     return `
       <div class="card">
-        <div class="row" style="margin-bottom:2px;"><div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}</div><div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}</div></div>
+        <div class="row" style="margin-bottom:2px;">
+          <div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}${podeTrocarTimeAntes?` <button class="icon-btn" style="width:22px;height:22px;font-size:11px;" data-action="abrir-menu-time" data-time-idx="${m.timeA}">⋮</button>`:''}</div>
+          <div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}${podeTrocarTimeAntes?` <button class="icon-btn" style="width:22px;height:22px;font-size:11px;" data-action="abrir-menu-time" data-time-idx="${m.timeB}">⋮</button>`:''}</div>
+        </div>
+        ${(souAdmin && ui.menuTimeIdx!=null) ? renderMenuTime(m, ui.menuTimeIdx) : ''}
         <div class="score-line"><span style="color:${corA};">${m.placar.A}</span><span class="vs">x</span><span style="color:${corB};">${m.placar.B}</span></div>
         <div class="display" style="text-align:center;font-size:34px;color:var(--gold);margin-top:4px;" id="timer-display">${fmtTimer(elapsed)}</div>
         ${souAdmin ? `
@@ -4532,7 +4582,7 @@ function traduzErroAuth(e){
       ui.matchId = el.dataset.openMatch;
       const destino = m ? abaPadraoPartida(m, groupById(m.groupId)) : {tab:'confirmacoes'};
       ui.matchTab = destino.tab; ui.matchSubTab = destino.sub;
-      ui.lobbySel = null; ui.lobbyTroca = null; ui.menuTimeIdx = null; ui.escolherCorTimeIdx = null; ui.mercadoSub = null;
+      ui.lobbySel = null; ui.lobbyTroca = null; ui.lobbyMoverAberto = null; ui.menuTimeIdx = null; ui.escolherCorTimeIdx = null; ui.mercadoSub = null;
       view='partida-detalhe'; render();
     });
     const rankModoSelect = document.getElementById('rank-modo-select');
@@ -5336,7 +5386,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-estagio]').forEach(el=> el.onclick = ()=>{
       const key = el.dataset.estagio;
       ui.eventosFutMenuAberto=false; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.pedirFalha=null;
-      ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; ui.menuTimeIdx=null; ui.escolherCorTimeIdx=null; ui.mercadoSub=null;
+      ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; ui.lobbyMoverAberto=null; ui.menuTimeIdx=null; ui.escolherCorTimeIdx=null; ui.mercadoSub=null;
       if(key==='confirmacoes' || key==='avaliacoes'){ ui.matchTab = key; }
       else { ui.matchTab='partida'; ui.matchSubTab = key; }
       render();
@@ -5466,7 +5516,7 @@ function traduzErroAuth(e){
         if(reservas.length) showToast(`Times sorteados! ${reservas.length} de reserva.`); else showToast('Times sorteados!');
         m.status = 'sorteada';
         ui.modal = null; ui.draftSorteioConfig = null;
-        ui.matchSubTab = 'acoes';
+        ui.matchSubTab = 'times';
         logAtividade(g, 'sorteou os times');
         await saveData(); render();
       };
@@ -5614,7 +5664,41 @@ function traduzErroAuth(e){
     if(abrirConfigSorteioBtn) abrirConfigSorteioBtn.onclick = ()=>{ ui.draftSorteioConfig=null; ui.modal='config-sorteio'; render(); };
 
     const irAoVivoBtn = document.querySelector('[data-action="ir-ao-vivo"]');
-    if(irAoVivoBtn) irAoVivoBtn.onclick = ()=>{ ui.matchSubTab='acoes'; ui.lobbySel=null; ui.lobbyTroca=null; render(); };
+    if(irAoVivoBtn) irAoVivoBtn.onclick = ()=>{ ui.matchSubTab='acoes'; ui.lobbySel=null; ui.lobbyTroca=null; ui.lobbyMoverAberto=null; render(); };
+
+    document.querySelectorAll('[data-action="abrir-add-jogador-time"]').forEach(el=> el.onclick = ()=>{
+      ui.modalAddJogadorTimeIdx = parseInt(el.dataset.timeIdx);
+      ui.addJogadorTab = 'confirmados'; ui.addJogadorBusca = '';
+      ui.modal = 'adicionar-jogador-time';
+      render();
+    });
+    document.querySelectorAll('[data-close-add-jogador-time]').forEach(el=> el.onclick = (ev)=>{
+      if(ev.target===el){ ui.modal=null; ui.modalAddJogadorTimeIdx=null; render(); }
+    });
+    document.querySelectorAll('[data-add-jogador-tab]').forEach(el=> el.onclick = ()=>{ ui.addJogadorTab = el.dataset.addJogadorTab; render(); });
+    const addJogadorBuscaInput = document.getElementById('add-jogador-busca');
+    if(addJogadorBuscaInput) addJogadorBuscaInput.oninput = e=>{ ui.addJogadorBusca = e.target.value; render(); };
+    document.querySelectorAll('[data-add-jogador-pid]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId); const g = groupById(m.groupId);
+      const pid = el.dataset.addJogadorPid;
+      const timeIdx = ui.modalAddJogadorTimeIdx;
+      if(timeIdx==null) return;
+      const tipo = associacaoAtual()?associacaoAtual().campoTipo:'Campo';
+      const pl = playerById(pid); if(!pl) return;
+      if(!m.confirmed.includes(pid)) m.confirmed.push(pid);
+      m.declined = (m.declined||[]).filter(id=>id!==pid);
+      m.waitlist = (m.waitlist||[]).filter(id=>id!==pid);
+      m.chegadas = m.chegadas || {}; m.chegadas[pid] = Date.now();
+      m.positionByPlayer = m.positionByPlayer || {};
+      if(!m.positionByPlayer[pid]) m.positionByPlayer[pid] = posicaoPrincipalPara(pl, tipo);
+      m.confirmadoEm = m.confirmadoEm || {}; if(!m.confirmadoEm[pid]) m.confirmadoEm[pid] = new Date().toISOString();
+      m.times[timeIdx] = m.times[timeIdx] || [];
+      if(!m.times[timeIdx].includes(pid)) m.times[timeIdx].push(pid);
+      const nomeDoTime = nomeTime(m, timeIdx);
+      ui.modal = null; ui.modalAddJogadorTimeIdx = null;
+      logAtividade(g, `adicionou ${pl.name} ao ${nomeDoTime}`);
+      await saveData(); showToast(`${pl.name} adicionado ao ${nomeDoTime}!`); render();
+    });
 
     const compartilharTimesBtn = document.querySelector('[data-action="compartilhar-times"]');
     if(compartilharTimesBtn) compartilharTimesBtn.onclick = ()=>{
@@ -5654,16 +5738,22 @@ function traduzErroAuth(e){
     });
 
     const lobbyMudarBtn = document.querySelector('[data-action="lobby-mudar-time"]');
-    if(lobbyMudarBtn) lobbyMudarBtn.onclick = async ()=>{
+    if(lobbyMudarBtn) lobbyMudarBtn.onclick = ()=>{ ui.lobbyMoverAberto = true; render(); };
+    const cancelarMoverBtn = document.querySelector('[data-action="cancelar-mover-time"]');
+    if(cancelarMoverBtn) cancelarMoverBtn.onclick = ()=>{ ui.lobbyMoverAberto = false; render(); };
+    document.querySelectorAll('[data-mover-jogador-time]').forEach(el=> el.onclick = async ()=>{
+      const destino = parseInt(el.dataset.moverJogadorTime);
       const m = matchById(ui.matchId); const sel = ui.lobbySel; if(!sel) return;
       const atual = m.times[sel.timeIdx];
       const i = atual.indexOf(sel.pid);
       if(i>=0) atual.splice(i,1);
-      const proximo = (sel.timeIdx+1) % m.times.length;
-      m.times[proximo].push(sel.pid);
-      ui.lobbySel = null;
-      await saveData(); showToast('Jogador movido de time.'); render();
-    };
+      m.times[destino] = m.times[destino] || [];
+      m.times[destino].push(sel.pid);
+      const nomeDestino = nomeTime(m, destino);
+      const plName = playerById(sel.pid)?.name || '';
+      ui.lobbySel = null; ui.lobbyMoverAberto = false;
+      await saveData(); showToast(`${plName} movido para ${nomeDestino}.`); render();
+    });
 
     const lobbyTrocarBtn = document.querySelector('[data-action="lobby-trocar"]');
     if(lobbyTrocarBtn) lobbyTrocarBtn.onclick = ()=>{
