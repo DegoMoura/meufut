@@ -2809,7 +2809,8 @@ function traduzErroAuth(e){
     `;
   }
   function renderMenuTime(m, idx){
-    const outrosTimes = m.times.map((_,i)=>i).filter(i=>i!==idx);
+    const emQuadra = idx===m.timeA || idx===m.timeB;
+    const alvosTroca = emQuadra ? (m.filaIdx||[]) : [m.timeA, m.timeB].filter(i=>i!=null);
     return `
       <div class="modal-bg" data-close-menu-time="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
         <div class="modal-handle"></div>
@@ -2817,7 +2818,7 @@ function traduzErroAuth(e){
         <div class="list-row" data-action="compartilhar-time-unico" data-time-idx="${idx}" style="cursor:pointer;"><div class="name">📤 Compartilhar time</div></div>
         <div class="list-row" data-action="alterar-cor-time" data-time-idx="${idx}" style="cursor:pointer;"><div class="name">🎨 Alterar cor</div></div>
         <div class="list-row" data-action="alterar-nome-time" data-time-idx="${idx}" style="cursor:pointer;"><div class="name">✏️ Alterar nome</div></div>
-        ${outrosTimes.map(i=>`<div class="list-row" data-action="trocar-time-fila" data-time-idx="${idx}" data-target-idx="${i}" style="cursor:pointer;"><div class="name">🔁 Trocar pelo ${nomeTime(m,i)}</div></div>`).join('')}
+        ${alvosTroca.map(i=>`<div class="list-row" data-action="trocar-time-fila" data-time-idx="${idx}" data-target-idx="${i}" style="cursor:pointer;"><div class="name">🔁 Trocar pelo ${nomeTime(m,i)}</div></div>`).join('')}
       </div></div>
     `;
   }
@@ -5068,15 +5069,23 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-action="trocar-time-fila"]').forEach(el=> el.onclick = async ()=>{
       const m = matchById(ui.matchId); const g = groupById(m.groupId);
       const idx = parseInt(el.dataset.timeIdx), targetIdx = parseInt(el.dataset.targetIdx);
-      const slot = idx===m.timeA ? 'A' : (idx===m.timeB ? 'B' : null);
-      if(slot){
-        m.filaIdx = (m.filaIdx||[]).filter(i=>i!==targetIdx);
-        m.filaIdx.push(idx);
-        if(slot==='A') m.timeA = targetIdx; else m.timeB = targetIdx;
-      }
+      // funciona nos dois sentidos: não importa se abriu o menu do time em quadra ou do time da fila
+      let onCourtIdx=null, queuedIdx=null, slot=null;
+      if(idx===m.timeA){ onCourtIdx=idx; slot='A'; queuedIdx=targetIdx; }
+      else if(idx===m.timeB){ onCourtIdx=idx; slot='B'; queuedIdx=targetIdx; }
+      else if(targetIdx===m.timeA){ onCourtIdx=targetIdx; slot='A'; queuedIdx=idx; }
+      else if(targetIdx===m.timeB){ onCourtIdx=targetIdx; slot='B'; queuedIdx=idx; }
       ui.menuTimeIdx = null;
-      logAtividade(g, `trocou ${nomeTime(m,idx)} pelo ${nomeTime(m,targetIdx)} em quadra`);
-      await saveData(); showToast('Times trocados!'); render();
+      if(slot && (m.filaIdx||[]).includes(queuedIdx)){
+        m.filaIdx = m.filaIdx.filter(i=>i!==queuedIdx);
+        m.filaIdx.push(onCourtIdx);
+        if(slot==='A') m.timeA = queuedIdx; else m.timeB = queuedIdx;
+        logAtividade(g, `trocou ${nomeTime(m,onCourtIdx)} pelo ${nomeTime(m,queuedIdx)} em quadra`);
+        await saveData(); showToast('Times trocados!');
+      } else {
+        showToast('Não foi possível trocar esses times.');
+      }
+      render();
     });
 
     document.querySelectorAll('[data-toggle-resultado]').forEach(el=> el.onclick = ()=>{
