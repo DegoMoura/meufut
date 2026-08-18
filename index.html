@@ -188,6 +188,8 @@ function traduzErroAuth(e){
   function bucketPosicao(pos){ return pos; }
   const TEAM_COLORS = ['#4c86c7','#c75c42','#4caf7c','#a374c7','#c7a34c','#4cc7c0','#d47ab0','#8ca34c'];
   function corTime(idx){ return TEAM_COLORS[idx % TEAM_COLORS.length]; }
+  function nomeTime(m, idx){ return (m.timeNomes && m.timeNomes[idx]) || ('Time '+(idx+1)); }
+  function corTimeM(m, idx){ return (m.timeCores && m.timeCores[idx]) || corTime(idx); }
   function jogadoresDoTime(m, slot){
     const idx = slot==='A' ? m.timeA : m.timeB;
     return (m.times && m.times[idx]) || [];
@@ -2751,8 +2753,13 @@ function traduzErroAuth(e){
     const timeA = m.timeA, timeB = m.timeB;
     const rosterA = m.times[timeA] || [];
     const rosterB = timeB!=null ? (m.times[timeB] || []) : [];
-    const corA = corTime(timeA), corB = timeB!=null ? corTime(timeB) : null;
+    const corA = corTimeM(m,timeA), corB = timeB!=null ? corTimeM(m,timeB) : null;
     const linhas = Math.max(rosterA.length, rosterB.length);
+    const tituloTime = (idx, cor) => `
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;">
+        <span style="text-align:center;color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">${nomeTime(m,idx).toUpperCase()}</span>
+        ${podeMexer?`<button class="icon-btn" style="width:24px;height:24px;font-size:12px;" data-action="abrir-menu-time" data-time-idx="${idx}">⋮</button>`:''}
+      </div>`;
     let vsRows = '';
     for(let i=0;i<linhas;i++){
       vsRows += `<div class="lobby-vs-row">
@@ -2761,10 +2768,13 @@ function traduzErroAuth(e){
       </div>`;
     }
     const filaTimes = (m.filaIdx||[]).map(idx=>{
-      const cor = corTime(idx);
+      const cor = corTimeM(m,idx);
       const roster = m.times[idx] || [];
       return `
-        <div class="eyebrow" style="margin-top:16px;color:${cor};">Time ${idx+1} <span style="color:var(--ink-dim);font-weight:600;">· Próximo a jogar</span></div>
+        <div class="row" style="margin-top:16px;align-items:center;">
+          <div class="eyebrow" style="margin:0;flex:1;color:${cor};">${nomeTime(m,idx)} <span style="color:var(--ink-dim);font-weight:600;">· Próximo a jogar</span></div>
+          ${podeMexer?`<button class="icon-btn" style="width:26px;height:26px;font-size:12px;" data-action="abrir-menu-time" data-time-idx="${idx}">⋮</button>`:''}
+        </div>
         <div class="card">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}</div>
       `;
     }).join('');
@@ -2772,9 +2782,11 @@ function traduzErroAuth(e){
       <p class="lead" style="text-align:center;margin-bottom:10px;">Nº de sorteios: ${m.numSorteios||1}</p>
       ${podeMexer ? `<button class="btn btn-gold btn-block" style="margin-bottom:14px;" data-action="ir-ao-vivo">Iniciar partida</button>` : ''}
       ${sel ? renderLobbyActionBar(sel) : ''}
+      ${(souAdmin && ui.menuTimeIdx!=null) ? renderMenuTime(m, ui.menuTimeIdx) : ''}
+      ${(souAdmin && ui.escolherCorTimeIdx!=null) ? renderEscolherCorTime(ui.escolherCorTimeIdx) : ''}
       <div class="row" style="margin-bottom:2px;">
-        <div style="flex:1;text-align:center;color:${corA};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">TIME ${timeA+1}</div>
-        ${timeB!=null?`<div style="flex:1;text-align:center;color:${corB};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">TIME ${timeB+1}</div>`:''}
+        ${tituloTime(timeA, corA)}
+        ${timeB!=null?tituloTime(timeB, corB):''}
       </div>
       <div class="card">${vsRows}</div>
       ${filaTimes}
@@ -2785,16 +2797,40 @@ function traduzErroAuth(e){
         </div>` : ''}
     `;
   }
+  function renderEscolherCorTime(idx){
+    return `
+      <div class="modal-bg" data-close-cor-time="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:16px;">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:20px;">Cor do time</h1>
+        <div class="row" style="flex-wrap:wrap;gap:12px;margin-top:8px;">
+          ${TEAM_COLORS.map(c=>`<div data-cor-time-opcao="${c}" style="width:38px;height:38px;border-radius:50%;background:${c};cursor:pointer;border:2px solid var(--line);"></div>`).join('')}
+        </div>
+      </div></div>
+    `;
+  }
+  function renderMenuTime(m, idx){
+    const outrosTimes = m.times.map((_,i)=>i).filter(i=>i!==idx);
+    return `
+      <div class="modal-bg" data-close-menu-time="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
+        <div class="modal-handle"></div>
+        <h1 class="page-title" style="font-size:20px;">${nomeTime(m,idx)}</h1>
+        <div class="list-row" data-action="compartilhar-time-unico" data-time-idx="${idx}" style="cursor:pointer;"><div class="name">📤 Compartilhar time</div></div>
+        <div class="list-row" data-action="alterar-cor-time" data-time-idx="${idx}" style="cursor:pointer;"><div class="name">🎨 Alterar cor</div></div>
+        <div class="list-row" data-action="alterar-nome-time" data-time-idx="${idx}" style="cursor:pointer;"><div class="name">✏️ Alterar nome</div></div>
+        ${outrosTimes.map(i=>`<div class="list-row" data-action="trocar-time-fila" data-time-idx="${idx}" data-target-idx="${i}" style="cursor:pointer;"><div class="name">🔁 Trocar pelo ${nomeTime(m,i)}</div></div>`).join('')}
+      </div></div>
+    `;
+  }
 
   function renderTabAcoes(m,g){
     if(!m.times) return `<div class="empty"><span class="ball">⚖️</span>Sorteie os times primeiro na aba Times.</div>`;
     m.statsJogo = m.statsJogo || {};
-    const numA = m.timeA+1, numB = m.timeB+1;
-    const corA = corTime(m.timeA), corB = corTime(m.timeB);
+    const nomeA = nomeTime(m,m.timeA).toUpperCase(), nomeB = nomeTime(m,m.timeB).toUpperCase();
+    const corA = corTimeM(m,m.timeA), corB = corTimeM(m,m.timeB);
     if(m.status==='finalizada'){
       return `
         <div class="card">
-          <div class="row" style="margin-bottom:2px;"><div style="flex:1;text-align:center;color:${corA};font-weight:800;">TIME ${numA}</div><div style="flex:1;text-align:center;color:${corB};font-weight:800;">TIME ${numB}</div></div>
+          <div class="row" style="margin-bottom:2px;"><div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}</div><div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}</div></div>
           <div class="score-line"><span style="color:${corA};">${m.placar.A}</span><span class="vs">x</span><span style="color:${corB};">${m.placar.B}</span></div>
         </div>
         ${renderStatsBlock(m)}
@@ -2868,7 +2904,7 @@ function traduzErroAuth(e){
     };
     return `
       <div class="card">
-        <div class="row" style="margin-bottom:2px;"><div style="flex:1;text-align:center;color:${corA};font-weight:800;">TIME ${numA}</div><div style="flex:1;text-align:center;color:${corB};font-weight:800;">TIME ${numB}</div></div>
+        <div class="row" style="margin-bottom:2px;"><div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}</div><div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}</div></div>
         <div class="score-line"><span style="color:${corA};">${m.placar.A}</span><span class="vs">x</span><span style="color:${corB};">${m.placar.B}</span></div>
         <div class="display" style="text-align:center;font-size:34px;color:var(--gold);margin-top:4px;" id="timer-display">${fmtTimer(elapsed)}</div>
         ${souAdmin ? `
@@ -2886,10 +2922,10 @@ function traduzErroAuth(e){
       ${substituicaoPicker}
       ${souAdmin ? `<p class="lead">Toque num jogador pra registrar o que aconteceu com ele.</p>` : ''}
       <div class="card">
-        <div class="team-label" style="color:${corA};">TIME ${numA}</div>
+        <div class="team-label" style="color:${corA};">${nomeA}</div>
         ${jogadoresA.map(pl=>linhaJogador(pl,'A')).join('')}
         <div class="divider-field"></div>
-        <div class="team-label" style="color:${corB};">TIME ${numB}</div>
+        <div class="team-label" style="color:${corB};">${nomeB}</div>
         ${jogadoresB.map(pl=>linhaJogador(pl,'B')).join('')}
       </div>
     `;
@@ -2899,9 +2935,10 @@ function traduzErroAuth(e){
       <div class="card" style="margin-top:14px;">
         <div class="eyebrow">Qual time sai?</div>
         <p class="lead" style="margin:0 0 10px;">Tem time(s) na fila esperando pra jogar.</p>
-        <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="A">Time ${m.timeA+1} sai</button>
-        <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="B">Time ${m.timeB+1} sai</button>
-        <button class="btn btn-danger btn-block" data-sai-time="ambos">Os dois saem</button>
+        <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="A">${nomeTime(m,m.timeA)} sai</button>
+        <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="B">${nomeTime(m,m.timeB)} sai</button>
+        <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="ambos">Os dois times saem</button>
+        <button class="btn btn-danger btn-block" data-sai-time="fim">🏁 Fim de jogo</button>
       </div>
     `;
   }
@@ -3882,7 +3919,7 @@ function traduzErroAuth(e){
       ui.matchId = el.dataset.openMatch;
       const destino = m ? abaPadraoPartida(m, groupById(m.groupId)) : {tab:'confirmacoes'};
       ui.matchTab = destino.tab; ui.matchSubTab = destino.sub;
-      ui.lobbySel = null; ui.lobbyTroca = null;
+      ui.lobbySel = null; ui.lobbyTroca = null; ui.menuTimeIdx = null; ui.escolherCorTimeIdx = null;
       view='partida-detalhe'; render();
     });
     const rankModoSelect = document.getElementById('rank-modo-select');
@@ -4652,7 +4689,7 @@ function traduzErroAuth(e){
       showToast('Chave PIX copiada!');
     };
     document.querySelectorAll('[data-mtab]').forEach(el=> el.onclick = ()=>{ ui.matchTab = el.dataset.mtab; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; render(); });
-    document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.pedirFalha=null; ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; render(); });
+    document.querySelectorAll('[data-msub]').forEach(el=> el.onclick = ()=>{ ui.matchSubTab = el.dataset.msub; ui.resultadoJogadorId=null; ui.pedirAssistencia=null; ui.pedirFalha=null; ui.substituicaoPendente=null; ui.lobbySel=null; ui.lobbyTroca=null; ui.menuTimeIdx=null; ui.escolherCorTimeIdx=null; render(); });
     const continuarTimesBtn = document.querySelector('[data-action="continuar-times"]');
     if(continuarTimesBtn) continuarTimesBtn.onclick = ()=>{ ui.matchSubTab = 'times'; render(); };
 
@@ -4905,7 +4942,7 @@ function traduzErroAuth(e){
       const m = matchById(ui.matchId); const g = groupById(m.groupId);
       let texto = `⚽ Times da pelada — ${g.name} (${fmtDate(m.date)}):\n\n`;
       m.times.forEach((ids,idx)=>{
-        texto += `Time ${idx+1}:\n`;
+        texto += `${nomeTime(m,idx)}:\n`;
         ids.map(playerById).filter(Boolean).forEach(pl=>{ texto += `- ${pl.name} (${matchPos(m,pl)})\n`; });
         texto += '\n';
       });
@@ -4979,6 +5016,68 @@ function traduzErroAuth(e){
       logAtividade(g, `marcou ${playerById(sel.pid).name} como não chegou`);
       await saveData(); showToast('Marcado como ausente.'); render();
     };
+
+    document.querySelectorAll('[data-action="abrir-menu-time"]').forEach(el=> el.onclick = (ev)=>{
+      ev.stopPropagation();
+      ui.menuTimeIdx = parseInt(el.dataset.timeIdx);
+      render();
+    });
+    document.querySelectorAll('[data-close-menu-time]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.menuTimeIdx=null; render(); } });
+
+    document.querySelectorAll('[data-action="compartilhar-time-unico"]').forEach(el=> el.onclick = ()=>{
+      const m = matchById(ui.matchId);
+      const idx = parseInt(el.dataset.timeIdx);
+      const jogadores = (m.times[idx]||[]).map(playerById).filter(Boolean);
+      let texto = `⚽ ${nomeTime(m,idx)}:\n`;
+      jogadores.forEach(pl=>{ texto += `- ${pl.name} (${matchPos(m,pl)})\n`; });
+      if(navigator.clipboard) navigator.clipboard.writeText(texto).catch(()=>{});
+      ui.menuTimeIdx = null;
+      showToast('Time copiado! Cole no WhatsApp.'); render();
+    });
+
+    document.querySelectorAll('[data-action="alterar-nome-time"]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId); const g = groupById(m.groupId);
+      const idx = parseInt(el.dataset.timeIdx);
+      const novoNome = prompt('Novo nome do time:', nomeTime(m,idx));
+      ui.menuTimeIdx = null;
+      if(novoNome && novoNome.trim()){
+        m.timeNomes = m.timeNomes || {};
+        m.timeNomes[idx] = novoNome.trim().slice(0,24);
+        logAtividade(g, `renomeou um time pra "${m.timeNomes[idx]}"`);
+        await saveData(); showToast('Nome atualizado!');
+      }
+      render();
+    });
+
+    document.querySelectorAll('[data-action="alterar-cor-time"]').forEach(el=> el.onclick = ()=>{
+      ui.escolherCorTimeIdx = parseInt(el.dataset.timeIdx);
+      ui.menuTimeIdx = null;
+      render();
+    });
+    document.querySelectorAll('[data-cor-time-opcao]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId);
+      const idx = ui.escolherCorTimeIdx;
+      if(idx==null) return;
+      m.timeCores = m.timeCores || {};
+      m.timeCores[idx] = el.dataset.corTimeOpcao;
+      ui.escolherCorTimeIdx = null;
+      await saveData(); showToast('Cor atualizada!'); render();
+    });
+    document.querySelectorAll('[data-close-cor-time]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.escolherCorTimeIdx=null; render(); } });
+
+    document.querySelectorAll('[data-action="trocar-time-fila"]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId); const g = groupById(m.groupId);
+      const idx = parseInt(el.dataset.timeIdx), targetIdx = parseInt(el.dataset.targetIdx);
+      const slot = idx===m.timeA ? 'A' : (idx===m.timeB ? 'B' : null);
+      if(slot){
+        m.filaIdx = (m.filaIdx||[]).filter(i=>i!==targetIdx);
+        m.filaIdx.push(idx);
+        if(slot==='A') m.timeA = targetIdx; else m.timeB = targetIdx;
+      }
+      ui.menuTimeIdx = null;
+      logAtividade(g, `trocou ${nomeTime(m,idx)} pelo ${nomeTime(m,targetIdx)} em quadra`);
+      await saveData(); showToast('Times trocados!'); render();
+    });
 
     document.querySelectorAll('[data-toggle-resultado]').forEach(el=> el.onclick = ()=>{
       const pid = el.dataset.toggleResultado;
@@ -5121,6 +5220,12 @@ function traduzErroAuth(e){
       const mAntiga = matchById(ui.matchId);
       mAntiga.status = 'finalizada';
       applyMatchResultStats(mAntiga);
+      if(escolha==='fim'){
+        ui.pedirSaidaTime=false;
+        logAtividade(groupById(mAntiga.groupId), 'encerrou a pelada');
+        await saveData(); showToast('Pelada encerrada!'); render();
+        return;
+      }
       let fila = (mAntiga.filaIdx||[]).slice();
       let novoTimeA, novoTimeB;
       if(escolha==='ambos'){
@@ -5139,11 +5244,12 @@ function traduzErroAuth(e){
         confirmInicioData:mAntiga.confirmInicioData, confirmInicioHora:mAntiga.confirmInicioHora,
         confirmFimData:mAntiga.confirmFimData, confirmFimHora:mAntiga.confirmFimHora,
         times: mAntiga.times, timeA: novoTimeA, timeB: novoTimeB, filaIdx: fila,
+        timeNomes: mAntiga.timeNomes, timeCores: mAntiga.timeCores, numSorteios: mAntiga.numSorteios,
         placar:{A:0,B:0}, golsPorJogador:{}, pagamentos:{}, cartoes:{}, avaliacoesFeitas:{},
         chegadas:{...mAntiga.chegadas}, statsJogo:{}, timer:{rodando:false,inicioTs:null,acumuladoMs:0} };
       data.matches.push(nova);
-      ui.matchId = nova.id; ui.pedirSaidaTime=false; ui.matchTab='partida'; ui.matchSubTab='acoes';
-      await saveData(); showToast('Times trocados! Nova partida pronta.'); render();
+      ui.matchId = nova.id; ui.pedirSaidaTime=false; ui.matchTab='partida'; ui.matchSubTab='times';
+      await saveData(); showToast('Times trocados! Toque em Iniciar partida quando estiver pronto.'); render();
     });
 
     const logoutBtn = document.querySelector('[data-action="logout"]');
