@@ -3153,7 +3153,10 @@ function traduzErroAuth(e){
       return `
         <div class="list-row" style="${estilo}" ${podeMexer?`data-lobby-tap="${timeIdx}|${pid}" role="button" tabindex="0"`:''}>
           <div class="jersey" style="width:30px;height:30px;font-size:11px;border-color:${cor};color:${cor};">⭐${matchRating(m,pl)}</div>
-          <div class="name" style="font-size:12.5px;">${pl.name}</div>
+          <div style="flex:1;min-width:0;">
+            <div class="name" style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pl.name}</div>
+            <div class="meta" style="font-size:10.5px;">${matchPos(m,pl)}</div>
+          </div>
           ${selecionado?'<div style="color:var(--gold);">●</div>':''}
         </div>`;
     };
@@ -3164,7 +3167,7 @@ function traduzErroAuth(e){
     const linhas = Math.max(rosterA.length, rosterB.length);
     const tituloTime = (idx, cor) => `
       <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;">
-        <span ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}" style="cursor:pointer;"`:''} style="text-align:center;color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">${nomeTime(m,idx).toUpperCase()}</span>
+        <span ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}"`:''} style="text-align:center;color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;${podeMexer?'cursor:pointer;':''}">${nomeTime(m,idx).toUpperCase()}</span>
       </div>`;
     // Vaga vazia (ex: sobrou espaço porque alguém foi marcado como "não chegou") — mostra um "+ Adicionar
     // jogador" bem no lugar onde a pessoa saiu, em vez de um botão genérico lá em cima. Fica óbvio onde falta gente.
@@ -3184,10 +3187,11 @@ function traduzErroAuth(e){
       const cor = corTimeM(m,idx);
       const roster = m.times[idx] || [];
       return `
-        <div class="row" style="margin-top:16px;align-items:center;">
-          <div class="eyebrow" ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}" style="cursor:pointer;margin:0;flex:1;color:${cor};"`:`style="margin:0;flex:1;color:${cor};"`}>${nomeTime(m,idx)} <span style="color:var(--ink-dim);font-weight:600;">· Próximo a jogar</span></div>
+        <div style="margin-top:18px;text-align:center;">
+          <span ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}"`:''} style="color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;${podeMexer?'cursor:pointer;':''}">${nomeTime(m,idx).toUpperCase()}</span>
+          <span style="color:var(--ink-dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px;"> · Próximo a jogar</span>
         </div>
-        <div class="card">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}${podeMexer?vagaVazia(idx,false):''}</div>
+        <div class="card" style="border-top:3px solid ${cor};">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}${podeMexer?vagaVazia(idx,false):''}</div>
       `;
     }).join('');
     return `
@@ -3354,6 +3358,12 @@ function traduzErroAuth(e){
     const historico = (m.eventos||[]);
     const aindaNaoComecou = elapsed===0 && !m.timer.rodando;
     const podeTrocarTimeAntes = souAdmin && aindaNaoComecou && (m.filaIdx||[]).length>0;
+    const podeAdicionar = souAdmin && m.status!=='finalizada';
+    const addJogadorRow = timeIdx => podeAdicionar ? `
+      <div class="list-row" style="cursor:pointer;color:var(--ink-dim);" data-action="abrir-add-jogador-time" data-time-idx="${timeIdx}">
+        <div class="jersey" style="width:28px;height:28px;font-size:13px;border-style:dashed;flex-shrink:0;">➕</div>
+        <div class="name" style="font-size:12.5px;color:var(--ink-dim);">Adicionar jogador</div>
+      </div>` : '';
     return `
       <div class="card">
         <div class="row" style="margin-bottom:2px;">
@@ -3382,10 +3392,12 @@ function traduzErroAuth(e){
           <div style="flex:1;min-width:0;">
             <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeA}" style="cursor:pointer;color:${corA};"`:`style="color:${corA};"`}>${nomeA}</div>
             ${jogadoresA.map(pl=>linhaJogador(pl,'A')).join('')}
+            ${addJogadorRow(m.timeA)}
           </div>
           <div style="flex:1;min-width:0;border-left:1px solid var(--line);padding-left:12px;">
             <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeB}" style="cursor:pointer;color:${corB};"`:`style="color:${corB};"`}>${nomeB}</div>
             ${jogadoresB.map(pl=>linhaJogador(pl,'B')).join('')}
+            ${addJogadorRow(m.timeB)}
           </div>
         </div>
       </div>
