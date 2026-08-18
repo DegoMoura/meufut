@@ -542,8 +542,14 @@ function traduzErroAuth(e){
   function renderLogin(){
     return `
       <div class="app"><div class="content" style="padding-top:60px;">
-        <div class="brand"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
-        <div class="brand-sub">app da associação</div>
+        <div class="row" style="align-items:flex-start;">
+          <div>
+            <div class="brand"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+            <div class="brand-sub">app da associação</div>
+          </div>
+          ${podeOferecerInstalarApp() ? `<div class="icon-btn" data-action="abrir-instalar-app" title="Instalar aplicativo">📲</div>` : ''}
+        </div>
+        ${ui.modal==='instalar-app' ? renderModalInstalarApp() : ''}
         <div class="eyebrow" style="margin-top:30px;">Entrar</div>
         <h1 class="page-title">Bem-vindo</h1>
         <p class="lead">Entre com seu e-mail para acessar suas peladas.</p>
@@ -600,6 +606,7 @@ function traduzErroAuth(e){
       try{ await signInWithPopup(auth, appleProvider); }
       catch(e){ showToast(traduzErroAuth(e)); }
     };
+    attachInstalarAppHandlers();
   }
 
   // ---------- VERIFICAÇÃO DE E-MAIL ----------
@@ -4388,7 +4395,7 @@ function traduzErroAuth(e){
   function renderModalInstalarApp(){
     const ios = ehIOS();
     return `
-      <div class="modal-bg" data-close-modal="1"><div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-bg" data-close-instalar-app="1"><div class="modal" onclick="event.stopPropagation()">
         <div class="modal-handle"></div>
         <h1 class="page-title" style="font-size:20px;">📲 Instalar o MeuFut</h1>
         ${ios ? `
@@ -4403,9 +4410,24 @@ function traduzErroAuth(e){
           <p class="lead">Instalação automática não disponível neste navegador.</p>
           <p class="lead" style="margin-top:6px;">No Android, abra o MeuFut pelo Chrome: toque no menu (⋮) e escolha "Instalar aplicativo" ou "Adicionar à tela inicial".</p>
         `}
-        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-close-modal="1">Entendi</button>
+        <button class="btn btn-gold btn-block" style="margin-top:16px;" data-close-instalar-app="1">Entendi</button>
       </div></div>
     `;
+  }
+  // Usado tanto na tela de login (antes de entrar) quanto dentro do app — instalar não deve exigir login.
+  function attachInstalarAppHandlers(){
+    document.querySelectorAll('[data-action="abrir-instalar-app"]').forEach(el=> el.onclick = async ()=>{
+      if(deferredInstallPrompt){
+        deferredInstallPrompt.prompt();
+        try{ await deferredInstallPrompt.userChoice; }catch(e){}
+        deferredInstallPrompt = null;
+        render();
+      } else {
+        ui.modal = 'instalar-app';
+        render();
+      }
+    });
+    document.querySelectorAll('[data-close-instalar-app]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.modal=null; render(); } });
   }
   function obterOuCriarFutPadrao(){
     let fut = data.groups.find(g=>g.associacaoId===associacaoId && g.memberIds.includes(me));
@@ -4795,17 +4817,7 @@ function traduzErroAuth(e){
       ui.matchId=null; ui.groupId=null; ui.resenhaSub=null; ui.futConfigSub=null;
       view='perfil'; ui.configSub='pessoal'; render();
     };
-    document.querySelectorAll('[data-action="abrir-instalar-app"]').forEach(el=> el.onclick = async ()=>{
-      if(deferredInstallPrompt){
-        deferredInstallPrompt.prompt();
-        try{ await deferredInstallPrompt.userChoice; }catch(e){}
-        deferredInstallPrompt = null;
-        render();
-      } else {
-        ui.modal = 'instalar-app';
-        render();
-      }
-    });
+    attachInstalarAppHandlers();
     const notificacoesBtn = document.querySelector('[data-action="abrir-notificacoes"]');
     if(notificacoesBtn) notificacoesBtn.onclick = async ()=>{
       const a = associacaoAtual();
