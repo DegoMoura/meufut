@@ -176,16 +176,23 @@ function traduzErroAuth(e){
       .filter(([raterId])=> raterId!==pid && !raterVetadoPor(pid, raterId))
       .map(([,o])=>o[pid]).filter(n=>n!=null);
   }
-  // nota que o ADMIN do grupo já deu pra esse jogador em avaliações pós-jogo anteriores; sem histórico, cai pra estrela autodeclarada
+  // nota que o ADMIN dá pra esse jogador: 1º a nota dada em "Classificar jogadores" (separada da nota autodeclarada),
+  // 2º (sem essa classificação) a média das avaliações pós-jogo que o admin já deu, 3º a estrela autodeclarada do jogador
   function notaAdminJogador(g, playerId){
+    const pl = playerById(playerId);
+    const tipo = campoTipoAtual();
+    if(pl){
+      const pos = posicaoPrincipalPara(pl, tipo);
+      const notaClassificada = notaAdminPos(pl, tipo, pos);
+      if(notaClassificada!=null) return notaClassificada;
+    }
     const notas = [];
     data.matches.filter(mm=>mm.groupId===g.id && mm.avaliacoesFeitas && mm.avaliacoesFeitas[g.adminId]).forEach(mm=>{
       const v = mm.avaliacoesFeitas[g.adminId][playerId];
       if(v!=null) notas.push(v);
     });
     if(notas.length) return notas.reduce((a,b)=>a+b,0)/notas.length;
-    const pl = playerById(playerId);
-    return pl ? estrelasPara(pl, campoTipoAtual(), posicaoPrincipalPara(pl, campoTipoAtual())) : 5;
+    return pl ? estrelasPara(pl, tipo, posicaoPrincipalPara(pl, tipo)) : 5;
   }
 
   function computeFormation(n, posicoesLinha){
@@ -1606,29 +1613,47 @@ function traduzErroAuth(e){
       </div>
     `;
   }
+  function notaAdminPos(pl, tipo, pos){
+    return (pl.starsAdminByPosition && pl.starsAdminByPosition[tipo] && pl.starsAdminByPosition[tipo][pos]!=null) ? pl.starsAdminByPosition[tipo][pos] : null;
+  }
   function renderCfgClassificar(g){
     const membros = g.memberIds.map(playerById).filter(Boolean);
     const tipo = associacaoAtual() ? associacaoAtual().campoTipo : 'Campo';
     return `
       ${cfgVoltarBtn()}
       <h1 class="page-title">🌟 Classificar jogadores</h1>
-      <p class="lead">Essas notas ajudam o grupo a fazer sorteios com times mais equilibrados.</p>
+      <p class="lead">A nota que o jogador se deu fica só no perfil dele. Aqui você dá a SUA nota como admin — ela é separada e é o que entra no sorteio quando "Equilibrar por notas do admin" está ativado.</p>
       <div class="card">
-        ${membros.map(pl=>`
+        ${membros.map(pl=>{
+          const aberto = ui.classificarAberto===pl.id;
+          if(aberto){
+            ui.draftClassificarNotas = ui.draftClassificarNotas || {};
+            if(!ui.draftClassificarNotas[pl.id]){
+              const base = {};
+              posicoesParaCampo(tipo).forEach(pos=>{ const atual = notaAdminPos(pl,tipo,pos); base[pos] = atual!=null ? atual : estrelasPara(pl,tipo,pos); });
+              ui.draftClassificarNotas[pl.id] = base;
+            }
+          }
+          return `
           <div class="list-row" data-toggle-classificar="${pl.id}" style="cursor:pointer;">
             <div style="flex:1;"><div class="name">${pl.name}</div><div class="meta">${posicaoPrincipalPara(pl,tipo)}</div></div>
-            <div style="color:var(--ink-dim);">${ui.classificarAberto===pl.id?'▲':'▼'}</div>
+            <div style="color:var(--ink-dim);">${aberto?'▲':'▼'}</div>
           </div>
-          ${ui.classificarAberto===pl.id ? `
+          ${aberto ? `
             <div class="card tight" style="margin:6px 0 12px;background:var(--bg2);">
+              <div class="row" style="font-size:11px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:1px;padding-bottom:6px;">
+                <div style="flex:1;">Posição</div><div style="width:60px;text-align:center;">Nota dele</div><div style="flex:1.6;text-align:right;">Sua nota (admin)</div>
+              </div>
               ${posicoesParaCampo(tipo).map(pos=>`
                 <div class="pos-rate-row">
                   <div class="pos-name">${pos}</div>
-                  <div class="star-picker interactive">${starPickerHtml(pos, estrelasPara(pl,tipo,pos), true, tipo, pl.id)}</div>
-                  <div class="pos-val">${estrelasPara(pl,tipo,pos)}</div>
+                  <div class="pos-val" style="width:60px;text-align:center;color:var(--ink-dim);">⭐${estrelasPara(pl,tipo,pos)}</div>
+                  <div class="star-picker interactive" style="flex:1.6;justify-content:flex-end;">${starPickerHtml(pos, ui.draftClassificarNotas[pl.id][pos], true, tipo, pl.id)}</div>
                 </div>`).join('')}
+              <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="salvar-classificacao-admin" data-pid="${pl.id}">Salvar nota do admin</button>
             </div>` : ''}
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     `;
   }
@@ -4364,7 +4389,7 @@ function traduzErroAuth(e){
     if(voltarConfigBtn) voltarConfigBtn.onclick = ()=>{
       ui.configSub=null; ui.draftConfigPessoais=null; ui.draftConfigEmergencia=null; ui.draftConfigLogin=null; ui.draftConfigJogadorInfo=null;
       ui.futConfigSub=null; ui.draftCfgGrupo=null; ui.draftCfgAval=null; ui.draftCfgHorario=null;
-      ui.draftCfgLocal=null; ui.draftCfgSorteio=null; ui.draftCfgFila=null; ui.draftFormacao=null; ui.classificarAberto=null;
+      ui.draftCfgLocal=null; ui.draftCfgSorteio=null; ui.draftCfgFila=null; ui.draftFormacao=null; ui.classificarAberto=null; ui.draftClassificarNotas=null;
       ui.finTab=null; ui.finJogadorId=null; ui.finTelaSelecao=false; ui.finCaixaFiltro=null; ui.finStatusFiltro=null;
       ui.finSelecionados=[]; ui.finBuscaJogador=''; ui.finSelBusca='';
       ui.draftBaixa=null; ui.finBaixaJogadorId=null;
@@ -4461,7 +4486,7 @@ function traduzErroAuth(e){
     const voltarCfgFutBtn = document.querySelector('[data-action="voltar-cfg-fut"]');
     if(voltarCfgFutBtn) voltarCfgFutBtn.onclick = ()=>{
       ui.futConfigSub=null; ui.draftCfgGrupo=null; ui.draftCfgAval=null; ui.draftCfgHorario=null;
-      ui.draftCfgLocal=null; ui.draftCfgSorteio=null; ui.draftCfgFila=null; ui.classificarAberto=null;
+      ui.draftCfgLocal=null; ui.draftCfgSorteio=null; ui.draftCfgFila=null; ui.classificarAberto=null; ui.draftClassificarNotas=null;
       render();
     };
 
@@ -4565,15 +4590,25 @@ function traduzErroAuth(e){
       ui.classificarAberto = ui.classificarAberto===pid ? null : pid;
       render();
     });
-    document.querySelectorAll('[data-star-pid]').forEach(el=> el.onclick = async ()=>{
-      const pid = el.dataset.starPid, campo = el.dataset.starCampo, pos = el.dataset.starPos, val = parseInt(el.dataset.starVal);
+    document.querySelectorAll('[data-star-pid]').forEach(el=> el.onclick = ()=>{
+      const pid = el.dataset.starPid, pos = el.dataset.starPos, val = parseInt(el.dataset.starVal);
+      ui.draftClassificarNotas = ui.draftClassificarNotas || {};
+      ui.draftClassificarNotas[pid] = ui.draftClassificarNotas[pid] || {};
+      ui.draftClassificarNotas[pid][pos] = val;
+      render();
+    });
+    document.querySelectorAll('[data-action="salvar-classificacao-admin"]').forEach(el=> el.onclick = async ()=>{
+      const pid = el.dataset.pid;
       const pl = playerById(pid);
-      pl.starsByPosition = pl.starsByPosition || {};
-      pl.starsByPosition[campo] = pl.starsByPosition[campo] || {};
-      pl.starsByPosition[campo][pos] = val;
+      const tipo = associacaoAtual() ? associacaoAtual().campoTipo : 'Campo';
+      const draft = (ui.draftClassificarNotas && ui.draftClassificarNotas[pid]) || {};
+      pl.starsAdminByPosition = pl.starsAdminByPosition || {};
+      pl.starsAdminByPosition[tipo] = { ...(pl.starsAdminByPosition[tipo]||{}), ...draft };
       const gAtual = groupById(ui.groupId);
-      if(gAtual) logAtividade(gAtual, `classificou ${pl.name} (${pos} ${campo}: ${val}⭐)`);
-      await saveData(); render();
+      if(gAtual) logAtividade(gAtual, `salvou a nota de admin de ${pl.name}`);
+      if(ui.draftClassificarNotas) delete ui.draftClassificarNotas[pid];
+      ui.classificarAberto = null;
+      await saveData(); showToast('Nota do admin salva!'); render();
     });
     document.querySelectorAll('[data-pos-principal-pid]').forEach(el=> el.onclick = async ()=>{
       const pid = el.dataset.posPrincipalPid, campo = el.dataset.posPrincipalCampo, val = el.dataset.posPrincipalVal;
