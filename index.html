@@ -113,9 +113,20 @@ function traduzErroAuth(e){
     if(!a || !a.memberIds.includes(me)) associacaoId = null;
     view = associacaoId ? 'home' : 'associacoes';
   }
+  let __saveQueue = Promise.resolve();
   async function saveData(){
-    try{ await setDoc(doc(db,'appdata','main'), data); }
-    catch(e){ showToast('Erro ao salvar. Tente de novo.'); }
+    // fila: nunca deixa dois setDoc rodarem ao mesmo tempo (evita corrida quando o jogador
+    // registra dois eventos rápido, tipo gol e assistência em seguida) + 1 retentativa silenciosa
+    const run = __saveQueue.then(async ()=>{
+      try{ await setDoc(doc(db,'appdata','main'), data); }
+      catch(e){
+        console.error('saveData falhou, tentando de novo:', e);
+        try{ await setDoc(doc(db,'appdata','main'), data); }
+        catch(e2){ console.error('saveData falhou de novo:', e2, e2 && e2.message); showToast('Erro ao salvar. Tente de novo.'); }
+      }
+    });
+    __saveQueue = run;
+    await run;
   }
   async function saveMe(){
     try{ localStorage.setItem('peladaapp:associacaoId', associacaoId||''); }catch(e){}
@@ -1662,6 +1673,12 @@ function traduzErroAuth(e){
     g.historico.unshift({ ts: new Date().toISOString(), autor: me, texto });
     if(g.historico.length>200) g.historico.length = 200;
   }
+  // histórico de eventos ao vivo da partida (gol, cartão, falha etc.), mostrado abaixo dos times na aba Partida
+  function logEvento(m, nome, label, detalhe){
+    m.eventos = m.eventos || [];
+    m.eventos.unshift({ nome, label, detalhe: detalhe||null, elapsedMs: timerElapsedMs(m) });
+    if(m.eventos.length>300) m.eventos.length = 300;
+  }
   function renderConfigJogadoresRoot(){
     return `<button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>` + renderJogadoresBody();
   }
@@ -3013,18 +3030,23 @@ function traduzErroAuth(e){
     const linhaJogador = (pl, slot) => {
       const initials = pl.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
       const cor = slot==='A'?corA:corB;
-      const expandido = souAdmin && ui.resultadoJogadorId===pl.id;
+      const selecionado = souAdmin && ui.resultadoJogadorId===pl.id;
       return `
-        <div class="list-row" ${souAdmin?`data-toggle-resultado="${pl.id}" style="cursor:pointer;"`:''}>
-          <div class="jersey" style="width:32px;height:32px;font-size:12px;border-color:${cor};color:${cor};">${initials}</div>
-          <div style="flex:1;">
-            <div class="name">${pl.name}</div>
+        <div class="list-row" ${souAdmin?`data-toggle-resultado="${pl.id}" style="cursor:pointer;"`:''} style="${selecionado?'background:var(--bg2);border-radius:8px;':''}">
+          <div class="jersey" style="width:28px;height:28px;font-size:11px;flex-shrink:0;border-color:${cor};color:${cor};">${initials}</div>
+          <div style="flex:1;min-width:0;">
+            <div class="name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pl.name}</div>
             <div class="meta">${matchPos(m,pl)}</div>
           </div>
-          ${souAdmin?`<div style="color:var(--ink-dim);">${expandido?'▲':'▼'}</div>`:''}
-        </div>
-        ${expandido ? renderPainelEventos(m, pl, slot) : ''}`;
+        </div>`;
     };
+    const painelSelecionado = (()=>{
+      if(!souAdmin || !ui.resultadoJogadorId) return '';
+      const pl = playerById(ui.resultadoJogadorId); if(!pl) return '';
+      const slot = jogadoresDoTime(m,'A').includes(pl.id) ? 'A' : 'B';
+      return renderPainelEventos(m, pl, slot);
+    })();
+    const historico = (m.eventos||[]);
     return `
       <div class="card">
         <div class="row" style="margin-bottom:2px;"><div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}</div><div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}</div></div>
@@ -3046,11 +3068,29 @@ function traduzErroAuth(e){
       ${substituicaoPicker}
       ${souAdmin ? `<p class="lead">Toque num jogador pra registrar o que aconteceu com ele.</p>` : ''}
       <div class="card">
-        <div class="team-label" style="color:${corA};">${nomeA}</div>
-        ${jogadoresA.map(pl=>linhaJogador(pl,'A')).join('')}
-        <div class="divider-field"></div>
-        <div class="team-label" style="color:${corB};">${nomeB}</div>
-        ${jogadoresB.map(pl=>linhaJogador(pl,'B')).join('')}
+        <div class="row" style="align-items:flex-start;gap:12px;">
+          <div style="flex:1;min-width:0;">
+            <div class="team-label" style="color:${corA};">${nomeA}</div>
+            ${jogadoresA.map(pl=>linhaJogador(pl,'A')).join('')}
+          </div>
+          <div style="flex:1;min-width:0;border-left:1px solid var(--line);padding-left:12px;">
+            <div class="team-label" style="color:${corB};">${nomeB}</div>
+            ${jogadoresB.map(pl=>linhaJogador(pl,'B')).join('')}
+          </div>
+        </div>
+      </div>
+      ${painelSelecionado}
+      <div class="eyebrow" style="margin-top:14px;">📜 Histórico da partida</div>
+      <div class="card">
+        ${historico.length===0 ? `<p class="lead" style="margin:0;">Nenhum evento registrado ainda.</p>` :
+          historico.map(ev=>`
+            <div class="list-row">
+              <div style="flex:1;">
+                <div class="name">${ev.nome}</div>
+                <div class="meta">${ev.label}${ev.detalhe?' · '+ev.detalhe:''}</div>
+              </div>
+              <div class="meta">${fmtTimer(ev.elapsedMs||0)}</div>
+            </div>`).join('')}
       </div>
     `;
   }
@@ -3081,6 +3121,10 @@ function traduzErroAuth(e){
     ];
     return `
       <div class="card tight" style="margin:6px 0 12px;background:var(--bg2);">
+        <div class="row" style="margin-bottom:10px;">
+          <div class="name" style="flex:1;">⚙️ Ações de ${pl.name}</div>
+          <div data-action="fechar-painel-jogador" style="cursor:pointer;color:var(--ink-dim);">✕</div>
+        </div>
         <div class="row" style="gap:8px;margin-bottom:10px;">
           <button class="btn btn-sm btn-ghost" style="flex:1;" data-action="abrir-substituicao" data-pid="${pl.id}" data-team="${team}">🔄 Substituição</button>
           <button class="btn btn-sm btn-ghost" style="flex:1;" data-action="abrir-troca-jogador" data-pid="${pl.id}" data-team="${team}">↔️ Trocar jogador</button>
@@ -3088,10 +3132,10 @@ function traduzErroAuth(e){
         <div class="chip-row">
           ${(isGoleiro?botoesGoleiro:botoesLinha).map(b=> b.abrirFalha
             ? `<div class="chip" data-abrir-falha="${pl.id}|${team}">${b.label}</div>`
-            : `<div class="chip" data-evento="${b.ev}" data-pid="${pl.id}" data-team="${team}">${b.label}</div>`).join('')}
+            : `<div class="chip" data-evento="${b.ev}" data-evento-label="${b.label}" data-pid="${pl.id}" data-team="${team}">${b.label}</div>`).join('')}
         </div>
         <div class="chip-row" style="margin-top:8px;">
-          ${botoesCartao.map(b=>`<div class="chip" data-cartao-evento="${b.cor}" data-pid="${pl.id}">${b.label}</div>`).join('')}
+          ${botoesCartao.map(b=>`<div class="chip" data-cartao-evento="${b.cor}" data-evento-label="${b.label}" data-pid="${pl.id}">${b.label}</div>`).join('')}
         </div>
       </div>
     `;
@@ -5486,12 +5530,15 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-evento]').forEach(el=> el.onclick = async ()=>{
       const m = matchById(ui.matchId);
       const pid = el.dataset.pid; const ev = el.dataset.evento; const team = el.dataset.team;
+      const label = el.dataset.eventoLabel || ev;
+      const pl = playerById(pid);
       m.statsJogo = m.statsJogo || {};
       m.statsJogo[pid] = m.statsJogo[pid] || {};
       m.statsJogo[pid][ev] = (m.statsJogo[pid][ev]||0)+1;
       if(ev==='gol'){
         m.placar[team] += 1;
         m.golsPorJogador[pid] = (m.golsPorJogador[pid]||0)+1;
+        logEvento(m, pl.name, label, null);
         ui.pedirAssistencia = {pid, team};
         ui.resultadoJogadorId = null;
         await saveData(); render();
@@ -5501,6 +5548,7 @@ function traduzErroAuth(e){
         const adversario = team==='A' ? 'B' : 'A';
         m.placar[adversario] += 1;
       }
+      logEvento(m, pl.name, label, null);
       await saveData(); showToast('Registrado!'); render();
     });
 
@@ -5511,6 +5559,7 @@ function traduzErroAuth(e){
         m.statsJogo = m.statsJogo || {};
         m.statsJogo[val] = m.statsJogo[val] || {};
         m.statsJogo[val].assistencia = (m.statsJogo[val].assistencia||0)+1;
+        if(m.eventos && m.eventos[0]) m.eventos[0].detalhe = 'Passe de: ' + (playerById(val)?.name||'');
       }
       ui.pedirAssistencia = null;
       await saveData(); render();
@@ -5524,13 +5573,18 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-falha-tipo]').forEach(el=> el.onclick = async ()=>{
       const m = matchById(ui.matchId); const pedir = ui.pedirFalha; if(!pedir) return;
       const tipo = el.dataset.falhaTipo;
+      const tipoObj = FALHA_TIPOS.find(t=>t.tipo===tipo);
+      const pl = playerById(pedir.pid);
       m.statsJogo = m.statsJogo || {};
       m.statsJogo[pedir.pid] = m.statsJogo[pedir.pid] || {};
       m.statsJogo[pedir.pid].falha = (m.statsJogo[pedir.pid].falha||0)+1;
       m.statsJogo[pedir.pid].falhaTipos = [...(m.statsJogo[pedir.pid].falhaTipos||[]), tipo];
+      logEvento(m, pl.name, '😬 Falha', tipoObj ? tipoObj.label : null);
       ui.pedirFalha = null; ui.resultadoJogadorId = null;
       await saveData(); showToast('Falha registrada!'); render();
     });
+    const fecharPainelBtn = document.querySelector('[data-action="fechar-painel-jogador"]');
+    if(fecharPainelBtn) fecharPainelBtn.onclick = ()=>{ ui.resultadoJogadorId = null; render(); };
 
     document.querySelectorAll('[data-action="abrir-substituicao"]').forEach(el=> el.onclick = ()=>{
       ui.substituicaoPendente = {tipo:'substituicao', saiuId: el.dataset.pid, team: el.dataset.team};
@@ -5558,16 +5612,19 @@ function traduzErroAuth(e){
       const nomeSaiu = playerById(sub.saiuId)?.name || '';
       const nomeEntrou = playerById(entrouId)?.name || '';
       logAtividade(g, sub.tipo==='substituicao' ? `substituiu ${nomeSaiu} por ${nomeEntrou}` : `trocou ${nomeSaiu} por ${nomeEntrou} (correção, sem crédito pra quem saiu)`);
+      logEvento(m, nomeEntrou, sub.tipo==='substituicao' ? '🔄 Substituição' : '↔️ Troca', `entrou no lugar de ${nomeSaiu}`);
       ui.substituicaoPendente = null; ui.resultadoJogadorId = null;
       await saveData(); showToast(sub.tipo==='substituicao' ? 'Substituição feita!' : 'Jogador trocado!'); render();
     });
 
     document.querySelectorAll('[data-cartao-evento]').forEach(el=> el.onclick = async ()=>{
       const m = matchById(ui.matchId);
-      const pid = el.dataset.pid; const cor = el.dataset.cartaoEvento;
+      const pid = el.dataset.pid; const cor = el.dataset.cartaoEvento; const label = el.dataset.eventoLabel || cor;
+      const pl = playerById(pid);
       m.cartoes = m.cartoes || {};
       m.cartoes[pid] = m.cartoes[pid] || {amarelo:0,vermelho:0,azul:0};
       m.cartoes[pid][cor] += 1;
+      logEvento(m, pl.name, `Cartão ${label}`, null);
       await saveData(); showToast('Cartão registrado'); render();
     });
 
