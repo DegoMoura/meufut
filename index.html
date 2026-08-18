@@ -3010,8 +3010,9 @@ function traduzErroAuth(e){
             ${m.timer.rodando
               ? `<button class="btn btn-ghost" style="flex:1;" data-action="pausar-timer">⏸️ Pausar</button>`
               : `<button class="btn btn-gold" style="flex:1;" data-action="iniciar-timer">▶️ ${elapsed>0?'Retomar':'Iniciar'}</button>`}
-            <button class="btn btn-danger" style="flex:1;" data-action="finalizar">🛑 Finalizar</button>
+            <button class="btn btn-danger" style="flex:1;" data-action="fim-de-jogo">🏁 Fim de jogo</button>
           </div>
+          <button class="btn btn-ghost btn-block" style="margin-top:8px;" data-action="finalizar">🛑 Encerrar pelada</button>
         ` : `<p class="lead" style="text-align:center;margin:10px 0 0;">Só o administrador controla o cronômetro e os eventos da partida.</p>`}
       </div>
       ${souAdmin && ui.pedirSaidaTime ? renderEscolhaTimeSai(m) : ''}
@@ -3035,8 +3036,7 @@ function traduzErroAuth(e){
         <p class="lead" style="margin:0 0 10px;">Tem time(s) na fila esperando pra jogar.</p>
         <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="A">${nomeTime(m,m.timeA)} sai</button>
         <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="B">${nomeTime(m,m.timeB)} sai</button>
-        <button class="btn btn-ghost btn-block" style="margin-bottom:8px;" data-sai-time="ambos">Os dois times saem</button>
-        <button class="btn btn-danger btn-block" data-sai-time="fim">🏁 Fim de jogo</button>
+        <button class="btn btn-ghost btn-block" data-sai-time="ambos">Os dois times saem</button>
       </div>
     `;
   }
@@ -5520,10 +5520,22 @@ function traduzErroAuth(e){
     if(finalizarBtn) finalizarBtn.onclick = async ()=>{
       const m = matchById(ui.matchId);
       if(m.timer && m.timer.rodando){ m.timer.acumuladoMs = timerElapsedMs(m); m.timer.rodando=false; m.timer.inicioTs=null; }
+      m.status = 'finalizada';
+      applyMatchResultStats(m);
+      logAtividade(groupById(m.groupId), 'encerrou a pelada');
+      ui.matchTab = 'avaliacoes'; ui.mercadoSub = null; ui.pedirSaidaTime = false;
+      await saveData(); showToast('Pelada encerrada!'); render();
+    };
+
+    const fimDeJogoBtn = document.querySelector('[data-action="fim-de-jogo"]');
+    if(fimDeJogoBtn) fimDeJogoBtn.onclick = async ()=>{
+      const m = matchById(ui.matchId);
+      if(m.timer && m.timer.rodando){ m.timer.acumuladoMs = timerElapsedMs(m); m.timer.rodando=false; m.timer.inicioTs=null; }
       if((m.filaIdx||[]).length>0){
         ui.pedirSaidaTime = true; await saveData(); render();
         return;
       }
+      // sem ninguém na fila pra entrar: não tem próximo jogo, encerra a pelada
       m.status = 'finalizada';
       applyMatchResultStats(m);
       logAtividade(groupById(m.groupId), 'finalizou a partida');
@@ -5536,12 +5548,6 @@ function traduzErroAuth(e){
       const mAntiga = matchById(ui.matchId);
       mAntiga.status = 'finalizada';
       applyMatchResultStats(mAntiga);
-      if(escolha==='fim'){
-        ui.pedirSaidaTime=false; ui.matchTab='avaliacoes'; ui.mercadoSub=null;
-        logAtividade(groupById(mAntiga.groupId), 'encerrou a pelada');
-        await saveData(); showToast('Pelada encerrada!'); render();
-        return;
-      }
       let fila = (mAntiga.filaIdx||[]).slice();
       let novoTimeA, novoTimeB;
       if(escolha==='ambos'){
