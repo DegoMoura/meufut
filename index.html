@@ -165,6 +165,17 @@ function traduzErroAuth(e){
     return posicaoPrincipalPara(p, a ? a.campoTipo : 'Campo');
   }
   function matchRating(m,p){ return estrelasPara(p, campoTipoAtual(), matchPos(m,p)); }
+  // vetos: cada jogador pode vetar outro pra que as notas dele não contem mais na sua média (evita quem sempre dá nota baixa por implicância)
+  function raterVetadoPor(targetId, raterId){
+    const alvo = playerById(targetId);
+    return !!(alvo && alvo.vetos && alvo.vetos.includes(raterId));
+  }
+  function notasValidas(m, pid){
+    if(!m.avaliacoesFeitas) return [];
+    return Object.entries(m.avaliacoesFeitas)
+      .filter(([raterId])=> raterId!==pid && !raterVetadoPor(pid, raterId))
+      .map(([,o])=>o[pid]).filter(n=>n!=null);
+  }
   // nota que o ADMIN do grupo já deu pra esse jogador em avaliações pós-jogo anteriores; sem histórico, cai pra estrela autodeclarada
   function notaAdminJogador(g, playerId){
     const notas = [];
@@ -216,7 +227,7 @@ function traduzErroAuth(e){
     let pool = participantes.map(pid=>{
       const pl = playerById(pid); if(!pl) return null;
       const pos = matchPos(last, pl);
-      const notasRecebidas = last.avaliacoesFeitas ? Object.values(last.avaliacoesFeitas).map(o=>o[pid]).filter(n=>n!=null) : [];
+      const notasRecebidas = notasValidas(last, pid);
       const nota = notasRecebidas.length ? (notasRecebidas.reduce((a,b)=>a+b,0)/notasRecebidas.length) : matchRating(last,pl);
       return { pl, bucket: pos, nota };
     }).filter(Boolean);
@@ -345,7 +356,7 @@ function traduzErroAuth(e){
     });
     const notas = [];
     data.matches.filter(m=>groupIds.includes(m.groupId) && m.avaliacoesFeitas).forEach(m=>{
-      Object.values(m.avaliacoesFeitas).forEach(obj=>{ if(obj[playerId]!=null) notas.push(obj[playerId]); });
+      notas.push(...notasValidas(m, playerId));
     });
     return { jogos: matchesJogadas.length, gols, assistencias:0, amarelo, vermelho, azul, vitorias, derrotas, empates,
       notaGeral: notas.length ? notas.reduce((a,b)=>a+b,0)/notas.length : null };
@@ -3016,10 +3027,17 @@ function traduzErroAuth(e){
     const minhasNotas = (m.avaliacoesFeitas && m.avaliacoesFeitas[me]) || {};
     return elegiveis.length>0 && elegiveis.every(pid=> minhasNotas[pid]!=null);
   }
+  function jaVotouCompleto(m, pid){
+    const outros = jogadoresElegiveisAvaliacao(m).filter(id=>id!==pid);
+    const notas = (m.avaliacoesFeitas && m.avaliacoesFeitas[pid]) || {};
+    return outros.length>0 && outros.every(oid=> notas[oid]!=null);
+  }
   function renderTabAvaliacoes(m,g){
     if(m.status!=='finalizada') return `<div class="empty"><span class="ball">⭐</span>As avaliações abrem depois que a partida for finalizada.</div>`;
     const sub = ui.mercadoSub;
     if(sub==='notas') return renderMercadoSubNotas(m,g);
+    if(sub==='vetar') return renderMercadoSubVetar(m,g);
+    if(sub==='votacao') return renderMercadoSubVotacao(m,g);
     if(sub==='vencedores') return renderMercadoSubVencedores(m,g);
     if(sub==='partidas') return renderMercadoSubPartidas(m,g);
     if(sub==='presencas') return renderMercadoSubPresencas(m,g);
@@ -3045,6 +3063,8 @@ function traduzErroAuth(e){
       </div>
       <div class="card" style="margin-top:14px;">
         ${item('notas','⭐','Dar notas', prazo.expirado ? '' : (notasOk?badgeOk:badgePendente))}
+        ${item('vetar','🚫','Vetar um jogador','')}
+        ${item('votacao','🗳️','Votação','')}
         ${item('vencedores','🏆','Vencedores do Dia','')}
         ${item('partidas','📋','Partidas','')}
       </div>
@@ -3067,6 +3087,50 @@ function traduzErroAuth(e){
     return `${voltar}
       <p class="lead">Prazo pra avaliar: até ${prazo.limite.toLocaleDateString('pt-BR')} às ${String(prazo.limite.getHours()).padStart(2,'0')}:${String(prazo.limite.getMinutes()).padStart(2,'0')}</p>
       ${renderAvaliacaoBlock(m)}
+    `;
+  }
+  function renderMercadoSubVetar(m,g){
+    const meuPlayer = myPlayer();
+    const meusVetos = meuPlayer.vetos || [];
+    const outros = jogadoresElegiveisAvaliacao(m).filter(id=>id!==me);
+    return `
+      <button class="btn btn-ghost btn-sm" data-action="mercado-voltar" style="margin-bottom:10px;">← Mercado das notas</button>
+      <div class="eyebrow">🚫 Vetar um jogador</div>
+      <p class="lead" style="margin:0 0 10px;">Vete quem você não quer que avalie você. As notas de um jogador vetado deixam de contar na sua média — em qualquer pelada, passada ou futura.</p>
+      <div class="card">
+        ${outros.length===0 ? `<p class="lead" style="margin:0;">Ninguém pra vetar nessa pelada.</p>` :
+        outros.map(pid=>{
+          const pl = playerById(pid); if(!pl) return '';
+          const vetado = meusVetos.includes(pid);
+          return `
+          <div class="list-row">
+            <div class="name" style="flex:1;">${pl.name}</div>
+            <button class="btn btn-sm ${vetado?'btn-danger':'btn-ghost'}" data-toggle-veto="${pid}">${vetado?'Vetado':'Vetar'}</button>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+  }
+  function renderMercadoSubVotacao(m,g){
+    const elegiveis = jogadoresElegiveisAvaliacao(m);
+    const votaram = elegiveis.filter(pid=> jaVotouCompleto(m,pid));
+    const faltam = elegiveis.filter(pid=> !jaVotouCompleto(m,pid));
+    const linha = (pid, ok) => {
+      const pl = playerById(pid); if(!pl) return '';
+      return `<div class="list-row"><div class="name" style="flex:1;">${pl.name}</div><span style="color:${ok?'#4caf7c':'#e8917a'};">${ok?'✅':'❗'}</span></div>`;
+    };
+    return `
+      <button class="btn btn-ghost btn-sm" data-action="mercado-voltar" style="margin-bottom:10px;">← Mercado das notas</button>
+      <div class="eyebrow">🗳️ Votação</div>
+      <p class="lead" style="margin:0 0 10px;">Quem já deu as notas e quem ainda falta votar.</p>
+      <div class="card">
+        <div class="eyebrow" style="margin-bottom:6px;">✅ Já votaram (${votaram.length})</div>
+        ${votaram.length===0 ? `<p class="lead" style="margin:0;">Ninguém ainda.</p>` : votaram.map(pid=>linha(pid,true)).join('')}
+      </div>
+      <div class="card" style="margin-top:10px;">
+        <div class="eyebrow" style="margin-bottom:6px;">❗ Faltam votar (${faltam.length})</div>
+        ${faltam.length===0 ? `<p class="lead" style="margin:0;">Todo mundo já votou!</p>` : faltam.map(pid=>linha(pid,false)).join('')}
+      </div>
     `;
   }
   function renderMercadoSubVencedores(m,g){
@@ -3197,7 +3261,7 @@ function traduzErroAuth(e){
     const statsJogo = m.statsJogo || {};
     const notas = {};
     todos.forEach(pid=>{
-      const recebidas = m.avaliacoesFeitas ? Object.values(m.avaliacoesFeitas).map(o=>o[pid]).filter(n=>n!=null) : [];
+      const recebidas = notasValidas(m, pid);
       notas[pid] = recebidas.length ? recebidas.reduce((a,b)=>a+b,0)/recebidas.length : null;
     });
     const comNota = todos.filter(pid=>notas[pid]!=null);
@@ -3331,7 +3395,7 @@ function traduzErroAuth(e){
     const dentroIds = [...timeAIds, ...timeBIds];
     const foraIds = (m.confirmed||[]).filter(id=> !dentroIds.includes(id));
     const notaMedia = pid=>{
-      const notas = m.avaliacoesFeitas ? Object.values(m.avaliacoesFeitas).map(o=>o[pid]).filter(n=>n!=null) : [];
+      const notas = notasValidas(m, pid);
       return notas.length ? (notas.reduce((a,b)=>a+b,0)/notas.length) : null;
     };
     const linhaJogador = (pid, numTime) => {
@@ -5338,6 +5402,15 @@ function traduzErroAuth(e){
       m.avaliacoesFeitas[me] = obj;
       await saveData(); showToast('Avaliações salvas!'); render();
     };
+
+    document.querySelectorAll('[data-toggle-veto]').forEach(el=> el.onclick = async ()=>{
+      const pid = el.dataset.toggleVeto;
+      const meuPlayer = myPlayer();
+      meuPlayer.vetos = meuPlayer.vetos || [];
+      const i = meuPlayer.vetos.indexOf(pid);
+      if(i>=0) meuPlayer.vetos.splice(i,1); else meuPlayer.vetos.push(pid);
+      await saveData(); showToast(i>=0?'Veto removido':'Jogador vetado — as notas dele não entram mais na sua média'); render();
+    });
 
     const finalizarBtn = document.querySelector('[data-action="finalizar"]');
     if(finalizarBtn) finalizarBtn.onclick = async ()=>{
