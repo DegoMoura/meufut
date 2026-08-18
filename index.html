@@ -2296,10 +2296,10 @@ function traduzErroAuth(e){
 
   // Sorteio configurável (tela "Sortear times"): número de times livre + prioridades ligáveis/desligáveis
   function defaultSorteioConfig(baseIds, m, g){
-    const linhaCap = m.maxJogadores || g.maxPlayers || 20;
-    const golCap = m.maxGoleiros || 0;
-    const tamanhoAlvo = golCap>0 ? Math.max(2, Math.round(linhaCap/golCap)+1) : Math.max(2, Math.floor(linhaCap/2));
-    const numTimes = Math.max(2, Math.round((baseIds.length||tamanhoAlvo) / Math.max(2,tamanhoAlvo)));
+    const a = associacaoAtual();
+    const tipoCampo = a ? a.campoTipo : 'Campo';
+    const tamanhoPadrao = {Society:7, Futsal:5, Campo:11, 'Futebol 7':7, 'Futebol 11':11}[tipoCampo] || 7;
+    const numTimes = Math.max(2, Math.round((baseIds.length||tamanhoPadrao) / tamanhoPadrao));
     return {
       numTimes, priorizarMensalistas: true, equilibrarPosicao: true, separarCraques: false,
       equilibrarNota: true, notaDoAdmin: false, goleiroFixo: false
