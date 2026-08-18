@@ -206,6 +206,45 @@ function traduzErroAuth(e){
     return (m.times && m.times[idx]) || [];
   }
   const POS_ABBR = {Goleiro:'GOL', Zagueiro:'ZAG', Lateral:'LAT', 'Ala/Lateral':'ALA', Volante:'VOL', Meia:'MEI', Centroavante:'CTA', Ponta:'PON', Atacante:'ATA', Fixo:'FIX', Ala:'ALA', 'Pivô':'PIV'};
+  // tipos de estatística editáveis em "Alterar estatísticas" (Mercado das notas)
+  const STAT_TYPES = [
+    {key:'gol', label:'Gols', icone:'⚽'},
+    {key:'assistencia', label:'Assistências', icone:'🅰️'},
+    {key:'defesaDificil', label:'Defesas difíceis', icone:'🧤'},
+    {key:'desarme', label:'Desarmes', icone:'🛡️'},
+    {key:'vitorias', label:'Vitórias', icone:'🏆'},
+    {key:'golContra', label:'Gols contra', icone:'🔴'},
+    {key:'chuteNaTrave', label:'Chute na trave', icone:'🥅'},
+    {key:'drible', label:'Dribles', icone:'🌀'},
+    {key:'amarelo', label:'Cartões amarelos', icone:'🟨'},
+    {key:'vermelho', label:'Cartões vermelhos', icone:'🟥'},
+    {key:'azul', label:'Cartões azuis', icone:'🟦'},
+  ];
+  // valor total (ao vivo + extra) de uma estatística de um jogador nessa partida
+  function statValorAtual(m, pid, key){
+    if(key==='gol') return (m.golsPorJogador && m.golsPorJogador[pid]) || 0;
+    if(key==='amarelo'||key==='vermelho'||key==='azul') return (m.cartoes && m.cartoes[pid] && m.cartoes[pid][key]) || 0;
+    return (m.statsJogo && m.statsJogo[pid] && m.statsJogo[pid][key]) || 0;
+  }
+  function statSetValorAtual(m, pid, key, val){
+    val = Math.max(0, val);
+    if(key==='gol'){ m.golsPorJogador = m.golsPorJogador||{}; m.golsPorJogador[pid] = val; return; }
+    if(key==='amarelo'||key==='vermelho'||key==='azul'){ m.cartoes=m.cartoes||{}; m.cartoes[pid]=m.cartoes[pid]||{}; m.cartoes[pid][key]=val; return; }
+    m.statsJogo = m.statsJogo||{}; m.statsJogo[pid]=m.statsJogo[pid]||{}; m.statsJogo[pid][key]=val;
+  }
+  function statExtra(m, pid, key){
+    return (m.statsExtras && m.statsExtras[pid] && m.statsExtras[pid][key]) || 0;
+  }
+  function statAjustarExtra(m, pid, key, delta){
+    const extraAtual = statExtra(m, pid, key);
+    if(delta<0 && extraAtual<=0) return; // não deixa remover além do que foi adicionado manualmente
+    const novoExtra = extraAtual + delta;
+    const novoTotal = statValorAtual(m, pid, key) + delta;
+    statSetValorAtual(m, pid, key, novoTotal);
+    m.statsExtras = m.statsExtras || {};
+    m.statsExtras[pid] = m.statsExtras[pid] || {};
+    m.statsExtras[pid][key] = Math.max(0, novoExtra);
+  }
   const FALHA_TIPOS = [
     {tipo:'caiu_fedendo', label:'Caiu fedendo', desc:'Cair sozinho, sem contato com adversário'},
     {tipo:'inacreditavel', label:'Inacreditável', desc:'Perder um gol feito que qualquer um faria'},
@@ -2430,6 +2469,21 @@ function traduzErroAuth(e){
     });
     return Object.values(porJogador).sort((a,b)=> b.pontos-a.pontos || b.vitorias-a.vitorias || a.derrotas-b.derrotas);
   }
+  function pontosTimesDoDia(m,g){
+    const partidas = partidasDoDia(m,g);
+    const porTime = {};
+    const get = idx=> porTime[idx] = porTime[idx] || {idx, partidas:0, vitorias:0, empates:0, derrotas:0, golsPro:0, golsContra:0, pontos:0};
+    partidas.forEach(mm=>{
+      const rA = get(mm.timeA), rB = get(mm.timeB);
+      rA.partidas+=1; rB.partidas+=1;
+      rA.golsPro += mm.placar.A; rA.golsContra += mm.placar.B;
+      rB.golsPro += mm.placar.B; rB.golsContra += mm.placar.A;
+      if(mm.placar.A>mm.placar.B){ rA.vitorias+=1; rA.pontos+=3; rB.derrotas+=1; }
+      else if(mm.placar.B>mm.placar.A){ rB.vitorias+=1; rB.pontos+=3; rA.derrotas+=1; }
+      else { rA.empates+=1; rB.empates+=1; rA.pontos+=1; rB.pontos+=1; }
+    });
+    return Object.values(porTime).sort((a,b)=> b.pontos-a.pontos || (b.golsPro-b.golsContra)-(a.golsPro-a.golsContra) || b.golsPro-a.golsPro);
+  }
   function avaliacaoPrazo(m,g){
     let base;
     if(m.horaTermino) base = new Date(`${m.date}T${m.horaTermino}`);
@@ -3065,15 +3119,16 @@ function traduzErroAuth(e){
         ${item('notas','⭐','Dar notas', prazo.expirado ? '' : (notasOk?badgeOk:badgePendente))}
         ${item('vetar','🚫','Vetar um jogador','')}
         ${item('votacao','🗳️','Votação','')}
-        ${item('vencedores','🏆','Vencedores do Dia','')}
         ${item('partidas','📋','Partidas','')}
+        ${item('vencedores','🏆','Vencedores do Dia','')}
       </div>
       ${souAdmin ? `
         <div class="eyebrow" style="margin-top:14px;">Ações administrativas</div>
         <div class="card">
           <div class="list-row" data-action="menu-alterar-pelada" style="cursor:pointer;"><div class="name" style="flex:1;">✏️ Alterar pelada</div><div style="color:var(--ink-dim);">›</div></div>
-          ${item('presencas','👍','Alterar presenças','')}
+          <div class="list-row" data-action="mercado-ao-vivo" style="cursor:pointer;"><div class="name" style="flex:1;">🔁 Ao vivo</div><div style="color:var(--ink-dim);">›</div></div>
           ${item('estatisticas','📊','Alterar estatísticas','')}
+          ${item('presencas','👍','Alterar presenças','')}
         </div>
       ` : ''}
     `;
@@ -3134,17 +3189,36 @@ function traduzErroAuth(e){
     `;
   }
   function renderMercadoSubVencedores(m,g){
-    const ranking = pontosDoDia(m,g);
+    const rankingTimes = pontosTimesDoDia(m,g);
+    const rankingJog = pontosDoDia(m,g);
     return `
       <button class="btn btn-ghost btn-sm" data-action="mercado-voltar" style="margin-bottom:10px;">← Mercado das notas</button>
       <div class="eyebrow">🏆 Vencedores do Dia</div>
       <p class="lead" style="margin-bottom:10px;">Pontuação de todas as partidas de hoje: vitória vale 3, empate vale 1.</p>
+      <div class="row" style="font-size:11px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:1px;padding:0 2px 6px;">
+        <div style="flex:1;">Times</div><div>Pontos</div>
+      </div>
       <div class="card">
-        <div class="row" style="font-size:11px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;border-bottom:1px solid var(--line);">
-          <div style="flex:1;">Jogadores</div><div>Pontos</div>
-        </div>
-        ${ranking.length===0 ? `<p class="lead" style="margin:10px 0 0;">Nenhuma partida finalizada hoje ainda.</p>` :
-          ranking.map(r=>{
+        ${rankingTimes.length===0 ? `<p class="lead" style="margin:0;">Nenhuma partida finalizada hoje ainda.</p>` :
+          rankingTimes.map(r=>{
+            const saldo = r.golsPro - r.golsContra;
+            return `
+            <div class="list-row">
+              <div class="jersey" style="width:30px;height:30px;font-size:11px;border-color:${corTimeM(m,r.idx)};color:${corTimeM(m,r.idx)};">🛡️</div>
+              <div style="flex:1;">
+                <div class="name">${nomeTime(m,r.idx)}</div>
+                <div class="meta">${r.vitorias} vitória${r.vitorias===1?'':'s'} · ${r.empates} empate${r.empates===1?'':'s'} · ${r.derrotas} derrota${r.derrotas===1?'':'s'} · ${r.golsPro} gols pró · ${r.golsContra} gols contra · Saldo: ${saldo>0?'+':''}${saldo}</div>
+              </div>
+              <div class="display" style="color:var(--gold);font-size:22px;">${r.pontos}</div>
+            </div>`;
+          }).join('')}
+      </div>
+      <div class="row" style="font-size:11px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:1px;padding:14px 2px 6px;">
+        <div style="flex:1;">Jogadores</div><div>Pontos</div>
+      </div>
+      <div class="card">
+        ${rankingJog.length===0 ? `<p class="lead" style="margin:0;">Nenhuma partida finalizada hoje ainda.</p>` :
+          rankingJog.map(r=>{
             const pl = playerById(r.pid); if(!pl) return '';
             return `
             <div class="list-row">
@@ -3193,36 +3267,43 @@ function traduzErroAuth(e){
     `;
   }
   function renderMercadoSubEstatisticas(m,g){
-    const souAdmin = g.adminId===me;
-    const todos = [...jogadoresDoTime(m,'A'), ...jogadoresDoTime(m,'B')];
-    let assistPicker = '';
-    if(souAdmin && ui.pedirAssistencia){
-      const {pid, team} = ui.pedirAssistencia;
-      const colegas = jogadoresDoTime(m, team).filter(x=>x!==pid).map(playerById).filter(Boolean);
-      assistPicker = `
-        <div class="card">
-          <div class="eyebrow">⚽ Gol! Quem deu a assistência?</div>
-          <div class="chip-row">
-            <div class="chip" data-assist="sem">Sem assistência</div>
-            ${colegas.map(c=>`<div class="chip" data-assist="${c.id}">${c.name}</div>`).join('')}
-          </div>
-        </div>`;
-    }
+    const tipo = STAT_TYPES.find(t=>t.key===(ui.statTipoSelecionado||'gol')) || STAT_TYPES[0];
+    const busca = (ui.statBusca||'').trim().toLowerCase();
+    const extrasIds = (m.substituidos||[]).map(s=>s.pid);
+    let todos = [...new Set([...jogadoresDoTime(m,'A'), ...jogadoresDoTime(m,'B'), ...extrasIds])];
+    if(busca) todos = todos.filter(pid=>{ const pl=playerById(pid); return pl && pl.name.toLowerCase().includes(busca); });
     return `
       <button class="btn btn-ghost btn-sm" data-action="mercado-voltar" style="margin-bottom:10px;">← Mercado das notas</button>
       <div class="eyebrow">📊 Alterar estatísticas</div>
-      ${assistPicker}
+      <div class="card tight" style="background:var(--bg2);margin-bottom:10px;">
+        <p class="lead" style="margin:0;font-size:13px;">Os dados ao vivo são registrados durante a partida. Aqui você adiciona estatísticas extras que não usam o registro ao vivo — elas entram na soma do dia.</p>
+      </div>
+      <select id="stat-tipo-select" style="width:100%;margin-bottom:10px;padding:10px;border-radius:10px;background:var(--bg2);color:var(--ink);border:1px solid var(--line);">
+        ${STAT_TYPES.map(t=>`<option value="${t.key}" ${t.key===tipo.key?'selected':''}>${t.icone} ${t.label}</option>`).join('')}
+      </select>
+      <input id="stat-busca-input" type="text" placeholder="🔎 Buscar jogador..." value="${ui.statBusca||''}" style="width:100%;margin-bottom:10px;padding:10px;border-radius:10px;background:var(--bg2);color:var(--ink);border:1px solid var(--line);" />
+      <div class="row" style="font-size:11px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:1px;padding:0 2px 6px;">
+        <div style="flex:1;">Jogadores</div><div>Extra</div>
+      </div>
       <div class="card">
-        ${todos.map(pid=>{
+        ${todos.length===0 ? `<p class="lead" style="margin:0;">Nenhum jogador encontrado.</p>` :
+        todos.map(pid=>{
           const pl = playerById(pid); if(!pl) return '';
-          const team = jogadoresDoTime(m,'A').includes(pid) ? 'A' : 'B';
-          const expandido = ui.resultadoJogadorId===pid;
+          const total = statValorAtual(m, pid, tipo.key);
+          const extra = statExtra(m, pid, tipo.key);
+          const aoVivo = total - extra;
           return `
-          <div class="list-row" data-toggle-resultado="${pid}" style="cursor:pointer;">
-            <div class="name" style="flex:1;">${pl.name}</div>
-            <div style="color:var(--ink-dim);">${expandido?'▲':'▼'}</div>
-          </div>
-          ${expandido ? renderPainelEventos(m, pl, team) : ''}`;
+          <div class="list-row">
+            <div style="flex:1;">
+              <div class="name">${pl.name}</div>
+              <div class="meta">Ao vivo: ${aoVivo} · Extra: ${extra} · Total: ${total}</div>
+            </div>
+            <div class="row" style="gap:6px;align-items:center;">
+              <button class="btn btn-sm btn-ghost" style="width:30px;padding:0;" data-stat-menos="${pid}">−</button>
+              <div style="min-width:18px;text-align:center;font-weight:800;">${extra}</div>
+              <button class="btn btn-sm btn-ghost" style="width:30px;padding:0;" data-stat-mais="${pid}">+</button>
+            </div>
+          </div>`;
         }).join('')}
       </div>
     `;
@@ -5125,6 +5206,28 @@ function traduzErroAuth(e){
       await saveData(); showToast('Presença atualizada.'); render();
     });
 
+    const mercadoAoVivoBtn = document.querySelector('[data-action="mercado-ao-vivo"]');
+    if(mercadoAoVivoBtn) mercadoAoVivoBtn.onclick = ()=>{
+      ui.matchTab = 'partida'; ui.matchSubTab = 'acoes'; ui.mercadoSub = null;
+      render();
+    };
+    const statTipoSelect = document.getElementById('stat-tipo-select');
+    if(statTipoSelect) statTipoSelect.onchange = ()=>{ ui.statTipoSelecionado = statTipoSelect.value; render(); };
+    const statBuscaInput = document.getElementById('stat-busca-input');
+    if(statBuscaInput) statBuscaInput.oninput = e=>{ ui.statBusca = e.target.value; render(); };
+    document.querySelectorAll('[data-stat-mais]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId);
+      const tipo = ui.statTipoSelecionado||'gol';
+      statAjustarExtra(m, el.dataset.statMais, tipo, 1);
+      await saveData(); render();
+    });
+    document.querySelectorAll('[data-stat-menos]').forEach(el=> el.onclick = async ()=>{
+      const m = matchById(ui.matchId);
+      const tipo = ui.statTipoSelecionado||'gol';
+      statAjustarExtra(m, el.dataset.statMenos, tipo, -1);
+      await saveData(); render();
+    });
+
     const abrirConfigSorteioBtn = document.querySelector('[data-action="abrir-config-sorteio"]');
     if(abrirConfigSorteioBtn) abrirConfigSorteioBtn.onclick = ()=>{ ui.draftSorteioConfig=null; ui.modal='config-sorteio'; render(); };
 
@@ -5400,6 +5503,7 @@ function traduzErroAuth(e){
       delete obj[me]; // segurança: nunca aceitar autoavaliação
       m.avaliacoesFeitas = m.avaliacoesFeitas || {};
       m.avaliacoesFeitas[me] = obj;
+      ui.mercadoSub = null;
       await saveData(); showToast('Avaliações salvas!'); render();
     };
 
