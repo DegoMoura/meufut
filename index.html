@@ -2230,6 +2230,10 @@ function traduzErroAuth(e){
         <div class="fin-kpi"><div class="fin-kpi-icon">👥</div><div class="fin-kpi-label">Qtd de mensalistas</div><div class="fin-kpi-value">${membros.length}</div></div>
       </div>
       ${podeEditar ? `
+      <button class="btn btn-gold btn-block" style="margin-top:12px;" data-action="fin-notificar-todos" ${emAtraso===0?'disabled style="opacity:.5"':''}>💰 Cobrar mensalidade de todos os pendentes${emAtraso>0?` (${emAtraso})`:''}</button>
+      <p class="lead" style="margin:4px 0 0;">Manda um aviso dentro do app pra cada jogador em atraso, com o valor pendente.</p>
+      ` : ''}
+      ${podeEditar ? `
       <div class="card" style="margin-top:12px;">
         <div class="list-row">
           <div style="flex:1;"><div class="name">🔒 Financeiro só para admin</div><div class="meta">Membros e diaristas não verão a aba Financeiro.</div></div>
@@ -3160,15 +3164,20 @@ function traduzErroAuth(e){
     const linhas = Math.max(rosterA.length, rosterB.length);
     const tituloTime = (idx, cor) => `
       <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;">
-        <span style="text-align:center;color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">${nomeTime(m,idx).toUpperCase()}</span>
-        ${podeMexer?`<button class="icon-btn-sm" data-action="abrir-add-jogador-time" data-time-idx="${idx}" title="Adicionar jogador">➕</button>`:''}
-        ${podeMexer?`<button class="icon-btn-sm" data-action="abrir-menu-time" data-time-idx="${idx}">⋮</button>`:''}
+        <span ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}" style="cursor:pointer;"`:''} style="text-align:center;color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;">${nomeTime(m,idx).toUpperCase()}</span>
       </div>`;
+    // Vaga vazia (ex: sobrou espaço porque alguém foi marcado como "não chegou") — mostra um "+ Adicionar
+    // jogador" bem no lugar onde a pessoa saiu, em vez de um botão genérico lá em cima. Fica óbvio onde falta gente.
+    const vagaVazia = (idx, semBorda) => podeMexer ? `
+      <div class="list-row" style="${semBorda?'border-bottom:none;':''}cursor:pointer;color:var(--ink-dim);" data-action="abrir-add-jogador-time" data-time-idx="${idx}">
+        <div class="jersey" style="width:30px;height:30px;font-size:14px;border-style:dashed;">➕</div>
+        <div class="name" style="font-size:12.5px;color:var(--ink-dim);">Adicionar jogador</div>
+      </div>` : '';
     let vsRows = '';
     for(let i=0;i<linhas;i++){
       vsRows += `<div class="lobby-vs-row">
-        <div>${rosterA[i]?jogadorTag(rosterA[i], timeA, corA, true):''}</div>
-        <div>${rosterB[i]?jogadorTag(rosterB[i], timeB, corB, true):''}</div>
+        <div>${rosterA[i]?jogadorTag(rosterA[i], timeA, corA, true):vagaVazia(timeA, true)}</div>
+        <div>${rosterB[i]?jogadorTag(rosterB[i], timeB, corB, true):vagaVazia(timeB, true)}</div>
       </div>`;
     }
     const filaTimes = (m.filaIdx||[]).map(idx=>{
@@ -3176,11 +3185,9 @@ function traduzErroAuth(e){
       const roster = m.times[idx] || [];
       return `
         <div class="row" style="margin-top:16px;align-items:center;">
-          <div class="eyebrow" style="margin:0;flex:1;color:${cor};">${nomeTime(m,idx)} <span style="color:var(--ink-dim);font-weight:600;">· Próximo a jogar</span></div>
-          ${podeMexer?`<button class="icon-btn-sm" data-action="abrir-add-jogador-time" data-time-idx="${idx}" title="Adicionar jogador">➕</button>`:''}
-          ${podeMexer?`<button class="icon-btn-sm" data-action="abrir-menu-time" data-time-idx="${idx}">⋮</button>`:''}
+          <div class="eyebrow" ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}" style="cursor:pointer;margin:0;flex:1;color:${cor};"`:`style="margin:0;flex:1;color:${cor};"`}>${nomeTime(m,idx)} <span style="color:var(--ink-dim);font-weight:600;">· Próximo a jogar</span></div>
         </div>
-        <div class="card">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}</div>
+        <div class="card">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}${podeMexer?vagaVazia(idx,false):''}</div>
       `;
     }).join('');
     return `
@@ -3350,10 +3357,9 @@ function traduzErroAuth(e){
     return `
       <div class="card">
         <div class="row" style="margin-bottom:2px;">
-          <div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}${podeTrocarTimeAntes?` <button class="icon-btn-sm" style="display:inline-flex;vertical-align:middle;" data-action="abrir-menu-time" data-time-idx="${m.timeA}">⋮</button>`:''}</div>
-          <div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}${podeTrocarTimeAntes?` <button class="icon-btn-sm" style="display:inline-flex;vertical-align:middle;" data-action="abrir-menu-time" data-time-idx="${m.timeB}">⋮</button>`:''}</div>
+          <div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}</div>
+          <div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}</div>
         </div>
-        ${(souAdmin && ui.menuTimeIdx!=null) ? renderMenuTime(m, ui.menuTimeIdx) : ''}
         <div class="score-line"><span style="color:${corA};">${m.placar.A}</span><span class="vs">x</span><span style="color:${corB};">${m.placar.B}</span></div>
         <div class="display" style="text-align:center;font-size:34px;color:var(--gold);margin-top:4px;" id="timer-display">${fmtTimer(elapsed)}</div>
         ${souAdmin ? `
@@ -3374,15 +3380,16 @@ function traduzErroAuth(e){
       <div class="card">
         <div class="row" style="align-items:flex-start;gap:12px;">
           <div style="flex:1;min-width:0;">
-            <div class="team-label" style="color:${corA};">${nomeA}</div>
+            <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeA}" style="cursor:pointer;color:${corA};"`:`style="color:${corA};"`}>${nomeA}</div>
             ${jogadoresA.map(pl=>linhaJogador(pl,'A')).join('')}
           </div>
           <div style="flex:1;min-width:0;border-left:1px solid var(--line);padding-left:12px;">
-            <div class="team-label" style="color:${corB};">${nomeB}</div>
+            <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeB}" style="cursor:pointer;color:${corB};"`:`style="color:${corB};"`}>${nomeB}</div>
             ${jogadoresB.map(pl=>linhaJogador(pl,'B')).join('')}
           </div>
         </div>
       </div>
+      ${(souAdmin && ui.menuTimeIdx!=null) ? renderMenuTime(m, ui.menuTimeIdx) : ''}
       ${painelSelecionado}
       <div class="eyebrow" style="margin-top:14px;">📜 Histórico da partida</div>
       <div class="card">
