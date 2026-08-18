@@ -91,7 +91,7 @@ function traduzErroAuth(e){
       const snap = await getDoc(doc(db,'appdata','main'));
       if(snap.exists()){
         const d2 = snap.data();
-        data = { players: d2.players||[], groups: d2.groups||[], matches: d2.matches||[], associacoes: d2.associacoes||[] };
+        data = { players: d2.players||[], groups: d2.groups||[], matches: (d2.matches||[]).map(desempacotarTimesMatch), associacoes: d2.associacoes||[] };
       }
     }catch(e){ showToast('Erro ao carregar dados. Tente de novo.'); }
     if(!data.associacoes) data.associacoes = [];
@@ -113,15 +113,27 @@ function traduzErroAuth(e){
     if(!a || !a.memberIds.includes(me)) associacaoId = null;
     view = associacaoId ? 'home' : 'associacoes';
   }
+  // Firestore não aceita array dentro de array — m.times é Array<Array<id>> (um array de times, cada um um
+  // array de ids). Embrulha cada time num objeto {ids:[...]} só na hora de salvar/carregar; o resto do app
+  // sempre trabalha com m.times como array de arrays normalmente.
+  function empacotarTimesMatch(m){
+    if(!m.times || !m.times.length) return m;
+    return { ...m, times: m.times.map(roster=> ({ ids: roster })) };
+  }
+  function desempacotarTimesMatch(m){
+    if(!m.times || !m.times.length) return m;
+    return { ...m, times: m.times.map(t=> Array.isArray(t) ? t : (t.ids||[])) };
+  }
   let __saveQueue = Promise.resolve();
   async function saveData(){
     // fila: nunca deixa dois setDoc rodarem ao mesmo tempo (evita corrida quando o jogador
     // registra dois eventos rápido, tipo gol e assistência em seguida) + 1 retentativa silenciosa
     const run = __saveQueue.then(async ()=>{
-      try{ await setDoc(doc(db,'appdata','main'), data); }
+      const payload = { ...data, matches: data.matches.map(empacotarTimesMatch) };
+      try{ await setDoc(doc(db,'appdata','main'), payload); }
       catch(e){
         console.error('saveData falhou, tentando de novo:', e);
-        try{ await setDoc(doc(db,'appdata','main'), data); }
+        try{ await setDoc(doc(db,'appdata','main'), payload); }
         catch(e2){ console.error('saveData falhou de novo:', e2, e2 && e2.message); showToast('Erro ao salvar. Tente de novo.'); }
       }
     });
