@@ -3315,9 +3315,17 @@ function traduzErroAuth(e){
     if(!elegiveis.includes(me)) return '';
     const outros = elegiveis.filter(id=>id!==me);
     const minhasNotas = (m.avaliacoesFeitas && m.avaliacoesFeitas[me]) || {};
+    const notaArbitragem = minhasNotas['arbitragem'];
     return `
       <div class="card">
         <p class="lead" style="margin:0 0 10px;">De 0 a 10, avalie quem jogou com você hoje. Sua nota entra na média geral de cada jogador.</p>
+        <div class="list-row">
+          <div class="name" style="flex:1;">🧑‍⚖️ Arbitragem</div>
+          <select data-avaliar="arbitragem" style="width:70px;">
+            <option value="">–</option>
+            ${Array.from({length:11},(_,i)=>i).map(n=>`<option value="${n}" ${notaArbitragem===n?'selected':''}>${n}</option>`).join('')}
+          </select>
+        </div>
         ${outros.map(pid=>{
           const pl = playerById(pid); if(!pl) return '';
           const atual = minhasNotas[pid];
