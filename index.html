@@ -1742,8 +1742,12 @@ function traduzErroAuth(e){
     return (pl.starsAdminByPosition && pl.starsAdminByPosition[tipo] && pl.starsAdminByPosition[tipo][pos]!=null) ? pl.starsAdminByPosition[tipo][pos] : null;
   }
   function renderCfgClassificar(g){
-    const membros = g.memberIds.map(playerById).filter(Boolean);
-    const tipo = associacaoAtual() ? associacaoAtual().campoTipo : 'Campo';
+    // Classificar jogadores é uma ação de admin/dono da associação, então lista TODOS os sócios
+    // (a.memberIds) — não só quem já está escalado nesse Fut específico (g.memberIds), senão
+    // fica faltando gente pra classificar.
+    const a = associacaoAtual();
+    const membros = (a ? a.memberIds : g.memberIds).map(playerById).filter(Boolean).sort((x,y)=>x.name.localeCompare(y.name));
+    const tipo = a ? a.campoTipo : 'Campo';
     return `
       ${cfgVoltarBtn()}
       <h1 class="page-title">🌟 Classificar jogadores</h1>
