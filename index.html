@@ -1446,10 +1446,19 @@ function traduzErroAuth(e){
   function renderGrupoDetalhe(){
     const g = groupById(ui.groupId);
     if(!g) { view='grupos'; return renderGrupos(); }
+    const souAdmin = souAdminAssoc();
     return `
-      <button class="btn btn-ghost btn-sm" data-nav="grupos" style="margin-bottom:12px;">← Fut</button>
+      <div class="row" style="align-items:flex-start;">
+        <button class="btn btn-ghost btn-sm" data-nav="grupos" style="margin-bottom:12px;">← Fut</button>
+        ${souAdmin ? `<button class="btn btn-ghost btn-sm" data-action="abrir-menu-grupo" style="padding:6px 12px;">⋮</button>` : ''}
+      </div>
       <h1 class="page-title">${g.name}</h1>
       <p class="lead">${g.tipo} · ${g.diaPadrao} ${g.horarioPadrao} · 📍 ${g.local}</p>
+      ${ui.menuGrupoAberto ? `
+        <div class="modal-bg" data-close-menu-grupo="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
+          <div class="modal-handle"></div>
+          <div class="list-row" data-action="menu-excluir-fut" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Excluir este Fut</div></div>
+        </div></div>` : ''}
       ${renderGrupoTabFut(g)}
     `;
   }
@@ -4625,6 +4634,12 @@ function traduzErroAuth(e){
     return nested;
   }
   async function gerarDemo(){
+    // evita duplicar: se já existe um Fut de demonstração nessa associação, não cria outro —
+    // só entra nele em vez de acumular vários grupos "Pelada Demo — Quinta" iguais.
+    if(associacaoId && data.groups.some(gr=>gr.associacaoId===associacaoId && gr.name==='Pelada Demo — Quinta')){
+      showToast('Você já tem um Fut de demonstração. Abra ele na lista.');
+      view='grupos'; render(); return;
+    }
     const p = myPlayer();
     if(!associacaoId){
       const a = { id: uid(), name:'Associação Demo', campoTipo:'Society', categoria:'Misto', endereco:'Ilhéus, BA',
@@ -4755,6 +4770,25 @@ function traduzErroAuth(e){
     });
     document.querySelectorAll('[data-goto]').forEach(el=> el.onclick = ()=>{ view = el.dataset.goto; render(); });
     document.querySelectorAll('[data-open-group]').forEach(el=> el.onclick = ()=>{ ui.groupId = el.dataset.openGroup; view='grupo-detalhe'; render(); });
+    const abrirMenuGrupoBtn = document.querySelector('[data-action="abrir-menu-grupo"]');
+    if(abrirMenuGrupoBtn) abrirMenuGrupoBtn.onclick = ()=>{ ui.menuGrupoAberto=true; render(); };
+    document.querySelectorAll('[data-close-menu-grupo]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.menuGrupoAberto=false; render(); } });
+    const menuExcluirFutBtn = document.querySelector('[data-action="menu-excluir-fut"]');
+    if(menuExcluirFutBtn) menuExcluirFutBtn.onclick = ()=>{
+      if(!souAdminAssoc()) return;
+      const g = groupById(ui.groupId); if(!g) return;
+      ui.menuGrupoAberto=false;
+      const numMatches = data.matches.filter(m=>m.groupId===g.id).length;
+      abrirConfirmacao('🗑️ Excluir este Fut?',
+        `Isso apaga "${g.name}" e ${numMatches>0 ? `${numMatches} partida${numMatches===1?'':'s'} dele` : 'todo o histórico dele'} permanentemente. Não dá pra reverter. Os jogadores continuam na associação.`,
+        async ()=>{
+          data.matches = data.matches.filter(m=>m.groupId!==g.id);
+          data.groups = data.groups.filter(gg=>gg.id!==g.id);
+          ui.groupId = null;
+          view = 'grupos';
+          await saveData(); showToast('Fut excluído.'); render();
+        }, 'Sim, excluir');
+    };
     document.querySelectorAll('[data-open-match]').forEach(el=> el.onclick = ()=>{
       const m = matchById(el.dataset.openMatch);
       ui.matchId = el.dataset.openMatch;
