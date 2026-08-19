@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="MeuFut">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260819c">
+<link rel="stylesheet" href="style.css?v=20260819d">
 </head>
 <body>
 <div id="root" class="root"></div>
@@ -341,7 +341,6 @@ function traduzErroAuth(e){
     posicoesLinha.forEach((pos,i)=>{ counts[pos] = base + (i<rem?1:0); });
     return counts;
   }
-  function bucketPosicao(pos){ return pos; }
   const TEAM_COLORS = ['#4c86c7','#c75c42','#4caf7c','#a374c7','#c7a34c','#4cc7c0','#d47ab0','#8ca34c'];
   function corTime(idx){ return TEAM_COLORS[idx % TEAM_COLORS.length]; }
   function nomeTime(m, idx){ return (m.timeNomes && m.timeNomes[idx]) || ('Time '+(idx+1)); }
@@ -1562,63 +1561,6 @@ function traduzErroAuth(e){
       ${itens.length===0 ? `<p class="lead">Nenhuma partida marcada.</p>` : itens.map(i=>i.html).join('')}
     `;
   }
-  function renderGrupoTabFinanceiro(g){
-    const matches = groupMatches(g.id).filter(m=>m.confirmed.length>0);
-    if(matches.length===0) return `<div class="empty"><span class="ball">💰</span>Nenhuma partida com jogadores confirmados ainda.</div>`;
-    const m = matches.slice().reverse().find(x=>x.status!=='finalizada') || matches[matches.length-1];
-    const valor = m.valor ?? g.valor;
-    const confirmedPlayers = m.confirmed.map(playerById).filter(Boolean);
-    const pagamentos = m.pagamentos || (m.pagamentos={});
-    const pagos = confirmedPlayers.filter(p=>pagamentos[p.id]).length;
-    const recebido = pagos * valor;
-    const pendente = (confirmedPlayers.length - pagos) * valor;
-    return `
-      <p class="lead">📅 ${fmtDate(m.date)} · R$ ${valor} por jogador</p>
-      <div class="card">
-        <div class="row">
-          <div><div class="eyebrow" style="margin:0;">Recebido</div><div class="display" style="font-size:22px;color:var(--gold);">R$ ${recebido}</div></div>
-          <div style="text-align:right;"><div class="eyebrow" style="margin:0;">Pendente</div><div class="display" style="font-size:22px;color:#e8917a;">R$ ${pendente}</div></div>
-        </div>
-      </div>
-      <div class="card">
-        ${confirmedPlayers.map(p=>`
-          <div class="list-row">
-            <div class="jersey" style="width:32px;height:32px;font-size:14px;">${pagamentos[p.id]?'✅':'⏳'}</div>
-            <div class="name" style="flex:1;">${p.name}</div>
-            ${(p.id===me || g.adminId===me) ?
-              `<button class="btn btn-sm ${pagamentos[p.id]?'btn-ghost':'btn-gold'}" data-toggle-pago="${p.id}" data-mid="${m.id}">${pagamentos[p.id]?'Marcar pendente':'Marcar pago'}</button>` :
-              `<span class="badge ${pagamentos[p.id]?'badge-done':'badge-open'}">${pagamentos[p.id]?'Pago':'Pendente'}</span>`}
-          </div>`).join('')}
-      </div>
-    `;
-  }
-  function renderGrupoTabInfo(g){
-    const members = g.memberIds.map(playerById).filter(Boolean).sort((a,b)=>ovr(b)-ovr(a));
-    return `
-      <div class="card tight row">
-        <div style="font-size:13px;font-weight:700;">🔗 Convidar membros</div>
-        <button class="btn btn-ghost btn-sm" data-copy-invite="${g.id}">Copiar convite</button>
-      </div>
-      <div class="card">
-        <div class="list-row"><div class="name">Tipo</div><div class="meta">${g.tipo}</div></div>
-        <div class="list-row"><div class="name">Dia/Horário</div><div class="meta">${g.diaPadrao} · ${g.horarioPadrao}</div></div>
-        <div class="list-row"><div class="name">Local</div><div class="meta">${g.local}</div></div>
-        <div class="list-row"><div class="name">Valor</div><div class="meta">R$ ${g.valor}</div></div>
-        <div class="list-row"><div class="name">Máximo</div><div class="meta">${g.maxPlayers} jogadores</div></div>
-      </div>
-      <div class="eyebrow" style="margin-top:16px;">Membros (${members.length})</div>
-      <div class="card">
-        ${members.map(p=>{
-          const posP = posicaoPrincipalPara(p, associacaoAtual()?associacaoAtual().campoTipo:'Campo');
-          return `
-          <div class="list-row">
-            <div class="jersey">${ovr(p)}</div>
-            <div><div class="name">${p.name} ${p.id===g.adminId?'👑':''}</div><div class="meta">${posP} · ⭐${estrelasPara(p,campoTipoAtual(),posP)}</div></div>
-          </div>`;
-        }).join('')}
-      </div>
-    `;
-  }
   function renderGrupoTabConfig(g){
     const podeEditar = souAdminAssoc();
     const sub = ui.futConfigSub;
@@ -2553,7 +2495,6 @@ function traduzErroAuth(e){
     if(agora>fim) return 'depois';
     return 'aberto';
   }
-  function tamanhoTime(g){ return Math.max(2, Math.floor(g.maxPlayers/2)); }
   function sortearComFila(ids, m, tamanho){
     const jogadores = ids.map(playerById).filter(Boolean);
     const numTimes = Math.floor(jogadores.length / tamanho);

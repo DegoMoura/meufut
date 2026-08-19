@@ -12,5 +12,8 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request));
+  // cache:'no-store' força ignorar o cache HTTP do navegador em cada request — sem isso,
+  // arquivos como o style.css podem ficar "presos" numa versão antiga por causa do cache
+  // do próprio navegador, mesmo com o service worker não guardando nada por conta própria.
+  event.respondWith(fetch(event.request, { cache: 'no-store' }));
 });

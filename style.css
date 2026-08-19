@@ -8,8 +8,6 @@
   --line:rgba(244,239,225,.13);
   --gold:#e4b94c;
   --gold-ink:#2b1f06;
-  --blue:#4c86c7;
-  --red:#c75c42;
   --radius:14px;
   --bg-glow:#17351f;
   --bg-texture:rgba(244,239,225,.035);
@@ -27,8 +25,6 @@ html[data-theme="escuro"]{
   --line:rgba(255,255,255,.11);
   --gold:#e4b94c;
   --gold-ink:#2b1f06;
-  --blue:#4c86c7;
-  --red:#c75c42;
   --bg-glow:#1b1b20;
   --bg-texture:rgba(255,255,255,.03);
   --nav-bg:rgba(10,10,13,.9);
@@ -123,8 +119,6 @@ input:focus,select:focus{outline:none;border-color:var(--gold);}
   transition:background-color .12s ease, color .12s ease, border-color .12s ease;
 }
 .chip.active{background:var(--gold);color:var(--gold-ink);border-color:var(--gold);box-shadow:0 2px 6px rgba(228,185,76,.25);}
-.sub-pill{font-size:10.5px;font-weight:700;letter-spacing:.3px;padding:5px 10px;border-radius:20px;color:var(--ink-dim);border:1px solid var(--line);cursor:pointer;opacity:.6;}
-.sub-pill.active{opacity:1;color:var(--gold);border-color:var(--gold);}
 .resenha-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .resenha-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 12px;cursor:pointer;transition:border-color .12s ease;}
 .resenha-card:active{border-color:var(--gold);}
@@ -143,9 +137,6 @@ input:focus,select:focus{outline:none;border-color:var(--gold);}
   background:var(--bg2);border:1px solid var(--line);color:var(--gold);
   box-shadow:0 2px 6px rgba(0,0,0,.18);
 }
-.jersey.blue{background:rgba(76,134,199,.18);border-color:var(--blue);color:#a8c9e8;}
-.jersey.red{background:rgba(199,92,66,.18);border-color:var(--red);color:#e8a893;}
-
 .divider-field{
   height:1px;margin:14px 0;position:relative;
   background:repeating-linear-gradient(90deg,var(--line) 0 8px, transparent 8px 16px);
@@ -190,9 +181,6 @@ input:focus,select:focus{outline:none;border-color:var(--gold);}
 }
 .score-line .vs{font-size:16px;color:var(--ink-dim);font-family:'Inter';font-weight:700;}
 .team-label{font-family:'Bebas Neue';font-size:15px;letter-spacing:1px;text-align:center;}
-.team-label.blue{color:#a8c9e8;}
-.team-label.red{color:#e8a893;}
-
 .list-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);}
 .list-row:last-child{border-bottom:none;}
 .lobby-vs-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);}
@@ -227,8 +215,6 @@ input:focus,select:focus{outline:none;border-color:var(--gold);}
 .addr-suggestion{padding:10px 11px;font-size:12.5px;line-height:1.4;border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink-dim);}
 .addr-suggestion:last-child{border-bottom:none;}
 .addr-suggestion:hover{color:var(--ink);background:var(--card);}
-.dial-display{font-family:'Bebas Neue';font-size:36px;text-align:center;color:var(--gold);letter-spacing:1px;margin-bottom:6px;}
-
 .pix-badge{width:42px;height:42px;border-radius:12px;flex-shrink:0;
   background:linear-gradient(160deg,#32BCAD,#1f8f83);color:#fff;
   display:flex;align-items:center;justify-content:center;font-size:19px;}
