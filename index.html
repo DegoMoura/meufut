@@ -1482,8 +1482,7 @@ function traduzErroAuth(e){
     return `
       <h1 class="page-title">Fut</h1>
       <p class="lead">Cada Fut é uma turma fixa de pelada dentro da associação.</p>
-      ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:10px;" data-action="marcar-fut-lista">📅 MARCAR FUT</button>` : ''}
-      <button class="btn btn-ghost btn-block" style="margin-bottom:16px;" data-action="gerar-demo">🎲 Gerar Fut de demonstração (16 jogadores)</button>
+      ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:16px;" data-action="marcar-fut-lista">📅 MARCAR FUT</button>` : ''}
       ${grupos.length===0 ? `<div class="empty"><span class="ball">👥</span>Nenhum Fut criado ainda.</div>` :
         grupos.map(g=>{
           const sou = g.memberIds.includes(me);
