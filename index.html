@@ -2888,15 +2888,19 @@ function traduzErroAuth(e){
   function renderMenuPartida(m,g){
     // Na tela de Ao Vivo não faz sentido oferecer "Sortear times" (os times já estão em jogo);
     // em compensação é ali que mora "Encerrar pelada", que saiu da tela pra não atrapalhar o placar.
+    const tab = ui.matchTab || 'confirmacoes';
     const subAtual = ui.matchSubTab || subEstagioPadrao(m);
     const emAoVivo = subAtual==='acoes' && m.status!=='finalizada';
     const partidaEmAndamento = m.times && m.status!=='finalizada';
+    // "Compartilhar" (convite pra confirmar presença) só faz sentido antes/durante a organização dos
+    // times — em Confirmações, Chegadas e Ao Vivo ele só ocupa espaço sem servir pra nada ali.
+    const mostrarCompartilhar = tab==='partida' && subAtual==='times';
     return `
-      <div class="modal-bg" data-close-menu-partida="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
+      <div class="modal-bg" data-close-menu-partida="1" style="padding-bottom:calc(90px + env(safe-area-inset-bottom));"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
         <div class="modal-handle"></div>
         ${emAoVivo ? '' : `<div class="list-row" data-action="menu-sortear-times" style="cursor:pointer;"><div class="name">🔄 Sortear times</div></div>`}
         <div class="list-row" data-action="menu-adicionar-convidado" style="cursor:pointer;"><div class="name">👤➕ Adicionar convidado</div></div>
-        <div class="list-row" data-action="menu-compartilhar" style="cursor:pointer;"><div class="name">🔗 Compartilhar</div></div>
+        ${mostrarCompartilhar ? `<div class="list-row" data-action="menu-compartilhar" style="cursor:pointer;"><div class="name">🔗 Compartilhar</div></div>` : ''}
         <div class="list-row" data-action="menu-alterar-pelada" style="cursor:pointer;"><div class="name">✏️ Alterar pelada</div></div>
         ${partidaEmAndamento ? `<div class="list-row" data-action="menu-encerrar-pelada" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🏁 Encerrar pelada</div></div>` : ''}
         <div class="list-row" data-action="menu-desmarcar-pelada" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Desmarcar pelada</div></div>
