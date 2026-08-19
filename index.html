@@ -238,7 +238,13 @@ function traduzErroAuth(e){
   function scrollParaPainelAcao(){
     requestAnimationFrame(()=>{
       const el = document.getElementById('painel-acao-jogador');
-      if(el && el.innerHTML.trim()) el.scrollIntoView({behavior:'smooth', block:'center'});
+      const container = document.getElementById('content');
+      if(!el || !el.innerHTML.trim() || !container) return;
+      // scrollIntoView({block:'center'}) empurra o painel pra baixo demais e a barra de navegação
+      // fixa (que fica por cima do conteúdo, não dentro dele) acaba cobrindo justo os botões de ação.
+      // Em vez de centralizar, rola só o suficiente pra encostar o topo do painel no topo da área visível.
+      const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTo({ top: container.scrollTop + elTop - 10, behavior:'smooth' });
     });
   }
 
@@ -2866,13 +2872,19 @@ function traduzErroAuth(e){
     `;
   }
   function renderMenuPartida(m,g){
+    // Na tela de Ao Vivo não faz sentido oferecer "Sortear times" (os times já estão em jogo);
+    // em compensação é ali que mora "Encerrar pelada", que saiu da tela pra não atrapalhar o placar.
+    const subAtual = ui.matchSubTab || subEstagioPadrao(m);
+    const emAoVivo = subAtual==='acoes' && m.status!=='finalizada';
+    const partidaEmAndamento = m.times && m.status!=='finalizada';
     return `
       <div class="modal-bg" data-close-menu-partida="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
         <div class="modal-handle"></div>
-        <div class="list-row" data-action="menu-sortear-times" style="cursor:pointer;"><div class="name">🔄 Sortear times</div></div>
+        ${emAoVivo ? '' : `<div class="list-row" data-action="menu-sortear-times" style="cursor:pointer;"><div class="name">🔄 Sortear times</div></div>`}
         <div class="list-row" data-action="menu-adicionar-convidado" style="cursor:pointer;"><div class="name">👤➕ Adicionar convidado</div></div>
         <div class="list-row" data-action="menu-compartilhar" style="cursor:pointer;"><div class="name">🔗 Compartilhar</div></div>
         <div class="list-row" data-action="menu-alterar-pelada" style="cursor:pointer;"><div class="name">✏️ Alterar pelada</div></div>
+        ${partidaEmAndamento ? `<div class="list-row" data-action="menu-encerrar-pelada" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🏁 Encerrar pelada</div></div>` : ''}
         <div class="list-row" data-action="menu-desmarcar-pelada" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Desmarcar pelada</div></div>
       </div></div>
     `;
@@ -3406,11 +3418,11 @@ function traduzErroAuth(e){
     const linhaJogador = (pl, slot) => {
       const cor = slot==='A'?corA:corB;
       const selecionado = souAdmin && ui.resultadoJogadorId===pl.id;
-      const estiloLinha = `padding:5px 0;${selecionado?'background:var(--bg2);border-radius:8px;padding:5px 4px;':''}${souAdmin?'cursor:pointer;':''}`;
+      const estiloLinha = `padding:6px 0;${selecionado?'background:var(--bg2);border-radius:8px;padding:6px 4px;':''}${souAdmin?'cursor:pointer;':''}`;
       return `
         <div class="list-row" ${souAdmin?`data-toggle-resultado="${pl.id}"`:''} style="${estiloLinha}">
-          <div class="jersey" style="width:22px;height:22px;font-size:9.5px;flex-shrink:0;border-color:${cor};color:${cor};overflow:hidden;border-radius:7px;">${avatarConteudo(pl)}</div>
-          <div class="name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${pl.name} <span style="color:var(--ink-dim);font-weight:500;font-size:10px;">· ${matchPos(m,pl)}</span></div>
+          <div class="jersey" style="width:27px;height:27px;font-size:11px;flex-shrink:0;border-color:${cor};color:${cor};overflow:hidden;border-radius:8px;">${avatarConteudo(pl)}</div>
+          <div class="name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">${pl.name} <span style="color:var(--ink-dim);font-weight:500;font-size:10.5px;">· ${matchPos(m,pl)}</span></div>
         </div>`;
     };
     const painelSelecionado = (()=>{
@@ -3424,9 +3436,9 @@ function traduzErroAuth(e){
     const podeTrocarTimeAntes = souAdmin && aindaNaoComecou && (m.filaIdx||[]).length>0;
     const podeAdicionar = souAdmin && m.status!=='finalizada';
     const linhaAddJogador = timeIdx => `
-      <div class="list-row" style="cursor:pointer;color:var(--ink-dim);padding:5px 0;" data-action="abrir-add-jogador-time" data-time-idx="${timeIdx}">
-        <div class="jersey" style="width:22px;height:22px;font-size:11px;border-style:dashed;flex-shrink:0;border-radius:7px;">➕</div>
-        <div class="name" style="font-size:11.5px;color:var(--ink-dim);">Adicionar jogador</div>
+      <div class="list-row" style="cursor:pointer;color:var(--ink-dim);padding:6px 0;" data-action="abrir-add-jogador-time" data-time-idx="${timeIdx}">
+        <div class="jersey" style="width:27px;height:27px;font-size:13px;border-style:dashed;flex-shrink:0;border-radius:8px;">➕</div>
+        <div class="name" style="font-size:12px;color:var(--ink-dim);">Adicionar jogador</div>
       </div>`;
     // Mostra uma linha "Adicionar jogador" pra cada vaga que falta até o alvo (linha + goleiro da associação),
     // não só uma — se faltam 3, aparecem os 3, sem precisar reabrir o modal um de cada vez.
@@ -3456,8 +3468,7 @@ function traduzErroAuth(e){
             ${m.timer.rodando
               ? `<button class="btn btn-ghost btn-sm" style="flex:1;" data-action="pausar-timer">⏸️ Pausar</button>`
               : `<button class="btn btn-gold btn-sm" style="flex:1;" data-action="iniciar-timer">▶️ ${elapsed>0?'Retomar':'Iniciar'}</button>`}
-            <button class="btn btn-danger btn-sm" style="flex:1;" data-action="fim-de-jogo">🏁 Fim</button>
-            <button class="btn btn-ghost btn-sm" style="flex:1;" data-action="finalizar">🛑 Encerrar</button>
+            <button class="btn btn-danger btn-sm" style="flex:1;" data-action="fim-de-jogo">🏁 Fim de jogo</button>
           </div>
         ` : `<p class="lead" style="text-align:center;margin:8px 0 0;font-size:11.5px;">Só o administrador controla o cronômetro e os eventos.</p>`}
       </div>
@@ -5794,6 +5805,20 @@ function traduzErroAuth(e){
     if(menuAlterarBtn) menuAlterarBtn.onclick = ()=>{
       ui.menuPartidaAberto=false; ui.draftAlterarPelada=null; ui.modal='alterar-pelada'; render();
     };
+    const menuEncerrarPeladaBtn = document.querySelector('[data-action="menu-encerrar-pelada"]');
+    if(menuEncerrarPeladaBtn) menuEncerrarPeladaBtn.onclick = ()=>{
+      ui.menuPartidaAberto=false;
+      abrirConfirmacao('🏁 Encerrar pelada?', 'Isso encerra a partida agora, com o placar atual, e libera as avaliações.', async ()=>{
+        const m = matchById(ui.matchId);
+        if(!m) return;
+        if(m.timer && m.timer.rodando){ m.timer.acumuladoMs = timerElapsedMs(m); m.timer.rodando=false; m.timer.inicioTs=null; }
+        m.status = 'finalizada';
+        applyMatchResultStats(m);
+        logAtividade(groupById(m.groupId), 'encerrou a pelada');
+        ui.matchTab = 'avaliacoes'; ui.mercadoSub = null; ui.pedirSaidaTime = false;
+        await saveData(); showToast('Pelada encerrada!'); render();
+      }, 'Sim, encerrar');
+    };
     const menuDesmarcarBtn = document.querySelector('[data-action="menu-desmarcar-pelada"]');
     if(menuDesmarcarBtn) menuDesmarcarBtn.onclick = ()=>{
       // usamos um modal próprio em vez de confirm() nativo: em PWA instalado no iOS/Safari o
@@ -6433,17 +6458,6 @@ function traduzErroAuth(e){
       if(i>=0) meuPlayer.vetos.splice(i,1); else meuPlayer.vetos.push(pid);
       await saveData(); showToast(i>=0?'Veto removido':'Jogador vetado — as notas dele não entram mais na sua média'); render();
     });
-
-    const finalizarBtn = document.querySelector('[data-action="finalizar"]');
-    if(finalizarBtn) finalizarBtn.onclick = async ()=>{
-      const m = matchById(ui.matchId);
-      if(m.timer && m.timer.rodando){ m.timer.acumuladoMs = timerElapsedMs(m); m.timer.rodando=false; m.timer.inicioTs=null; }
-      m.status = 'finalizada';
-      applyMatchResultStats(m);
-      logAtividade(groupById(m.groupId), 'encerrou a pelada');
-      ui.matchTab = 'avaliacoes'; ui.mercadoSub = null; ui.pedirSaidaTime = false;
-      await saveData(); showToast('Pelada encerrada!'); render();
-    };
 
     const fimDeJogoBtn = document.querySelector('[data-action="fim-de-jogo"]');
     if(fimDeJogoBtn) fimDeJogoBtn.onclick = async ()=>{
