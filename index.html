@@ -2896,7 +2896,7 @@ function traduzErroAuth(e){
     // times — em Confirmações, Chegadas e Ao Vivo ele só ocupa espaço sem servir pra nada ali.
     const mostrarCompartilhar = tab==='partida' && subAtual==='times';
     return `
-      <div class="modal-bg" data-close-menu-partida="1" style="padding-bottom:calc(90px + env(safe-area-inset-bottom));"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
+      <div class="modal-bg" data-close-menu-partida="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
         <div class="modal-handle"></div>
         ${emAoVivo ? '' : `<div class="list-row" data-action="menu-sortear-times" style="cursor:pointer;"><div class="name">🔄 Sortear times</div></div>`}
         <div class="list-row" data-action="menu-adicionar-convidado" style="cursor:pointer;"><div class="name">👤➕ Adicionar convidado</div></div>
