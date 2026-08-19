@@ -78,6 +78,7 @@ function traduzErroAuth(e){
   let associacaoId = null;
   let view = 'loading';
   let ui = { modal:null, groupId:null, matchId:null, toast:null, draftPlayer:null, draftGroup:null, draftMatch:null, loginPhone:'', assocScreen:'list', finEditando:false, draftFinanceiro:null };
+  let ultimaViewRenderizada = null; // usado só pra decidir se preserva o scroll entre re-renders (ver render())
 
   // ---------- Tema (escuro é o padrão; funciona até antes de logar) ----------
   const TEMA_STORAGE_KEY = 'meufut-tema-escuro';
@@ -609,6 +610,15 @@ function traduzErroAuth(e){
       return;
     }
 
+    // Preserva a posição de rolagem entre re-renders da MESMA tela (abrir o menu ⋮, tocar num jogador
+    // no Ao Vivo, trocar pra "quem deu assistência" etc.) — sem isso, cada render() recria o #content
+    // do zero e a rolagem volta pro topo sozinha, o que parece bug. Só reseta pra topo quando a
+    // pessoa realmente navega pra outra tela (view muda).
+    const contentAntigo = document.getElementById('content');
+    const scrollAntes = contentAntigo ? contentAntigo.scrollTop : 0;
+    const mesmaTela = ultimaViewRenderizada===view;
+    ultimaViewRenderizada = view;
+
     root.innerHTML = `
       <div class="app">
         ${renderTopbar()}
@@ -618,6 +628,10 @@ function traduzErroAuth(e){
         ${ui.toast ? `<div class="toast">${ui.toast}</div>` : ''}
       </div>
     `;
+    if(mesmaTela){
+      const contentNovo = document.getElementById('content');
+      if(contentNovo) contentNovo.scrollTop = scrollAntes;
+    }
     attachGlobalHandlers();
   }
 
