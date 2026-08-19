@@ -2827,15 +2827,20 @@ function traduzErroAuth(e){
       : origemPartida==='home'
       ? `<button class="btn btn-ghost btn-sm" data-nav="home" style="margin-bottom:12px;">← Início</button>`
       : `<button class="btn btn-ghost btn-sm" data-open-group="${g.id}" style="margin-bottom:12px;">← ${g.name}</button>`;
+    // Na tela de Ao Vivo a prioridade é caber placar + tempo + jogadores + botões numa tela só,
+    // então some com data/hora/local (já sabidos de antemão) e encolhe o seletor de estágio.
+    const subAtual = ui.matchSubTab || subEstagioPadrao(m);
+    const isAoVivo = tab==='partida' && subAtual==='acoes' && m.status!=='finalizada';
     return `
       <div class="row" style="align-items:flex-start;">
         ${botaoVoltar}
         ${souAdmin ? `<button class="btn btn-ghost btn-sm" data-action="abrir-menu-partida" style="padding:6px 12px;">⋮</button>` : ''}
       </div>
+      ${isAoVivo ? '' : `
       <h1 class="page-title">📅 ${fmtDate(m.date)}</h1>
-      <p class="lead">⏰ ${m.time} · 📍 ${m.local}</p>
-      <div class="list-row" data-action="abrir-eventos-fut" style="cursor:pointer;background:var(--bg2);border-radius:12px;margin-bottom:16px;">
-        <div class="name" style="flex:1;">🎬 Eventos do Fut · ${estagioAtual.label}</div>
+      <p class="lead">⏰ ${m.time} · 📍 ${m.local}</p>`}
+      <div class="list-row" data-action="abrir-eventos-fut" style="cursor:pointer;background:var(--bg2);border-radius:12px;margin-bottom:${isAoVivo?'8px':'16px'};${isAoVivo?'padding:8px 12px;':''}">
+        <div class="name" style="flex:1;${isAoVivo?'font-size:12.5px;':''}">🎬 Eventos do Fut · ${estagioAtual.label}</div>
         <div class="meta">▾</div>
       </div>
       ${ui.eventosFutMenuAberto ? `
@@ -3401,13 +3406,11 @@ function traduzErroAuth(e){
     const linhaJogador = (pl, slot) => {
       const cor = slot==='A'?corA:corB;
       const selecionado = souAdmin && ui.resultadoJogadorId===pl.id;
+      const estiloLinha = `padding:5px 0;${selecionado?'background:var(--bg2);border-radius:8px;padding:5px 4px;':''}${souAdmin?'cursor:pointer;':''}`;
       return `
-        <div class="list-row" ${souAdmin?`data-toggle-resultado="${pl.id}" style="cursor:pointer;"`:''} style="${selecionado?'background:var(--bg2);border-radius:8px;':''}">
-          <div class="jersey" style="width:28px;height:28px;font-size:11px;flex-shrink:0;border-color:${cor};color:${cor};overflow:hidden;">${avatarConteudo(pl)}</div>
-          <div style="flex:1;min-width:0;">
-            <div class="name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pl.name}</div>
-            <div class="meta">${matchPos(m,pl)}</div>
-          </div>
+        <div class="list-row" ${souAdmin?`data-toggle-resultado="${pl.id}"`:''} style="${estiloLinha}">
+          <div class="jersey" style="width:22px;height:22px;font-size:9.5px;flex-shrink:0;border-color:${cor};color:${cor};overflow:hidden;border-radius:7px;">${avatarConteudo(pl)}</div>
+          <div class="name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${pl.name} <span style="color:var(--ink-dim);font-weight:500;font-size:10px;">· ${matchPos(m,pl)}</span></div>
         </div>`;
     };
     const painelSelecionado = (()=>{
@@ -3421,9 +3424,9 @@ function traduzErroAuth(e){
     const podeTrocarTimeAntes = souAdmin && aindaNaoComecou && (m.filaIdx||[]).length>0;
     const podeAdicionar = souAdmin && m.status!=='finalizada';
     const linhaAddJogador = timeIdx => `
-      <div class="list-row" style="cursor:pointer;color:var(--ink-dim);" data-action="abrir-add-jogador-time" data-time-idx="${timeIdx}">
-        <div class="jersey" style="width:28px;height:28px;font-size:13px;border-style:dashed;flex-shrink:0;">➕</div>
-        <div class="name" style="font-size:12.5px;color:var(--ink-dim);">Adicionar jogador</div>
+      <div class="list-row" style="cursor:pointer;color:var(--ink-dim);padding:5px 0;" data-action="abrir-add-jogador-time" data-time-idx="${timeIdx}">
+        <div class="jersey" style="width:22px;height:22px;font-size:11px;border-style:dashed;flex-shrink:0;border-radius:7px;">➕</div>
+        <div class="name" style="font-size:11.5px;color:var(--ink-dim);">Adicionar jogador</div>
       </div>`;
     // Mostra uma linha "Adicionar jogador" pra cada vaga que falta até o alvo (linha + goleiro da associação),
     // não só uma — se faltam 3, aparecem os 3, sem precisar reabrir o modal um de cada vez.
@@ -3433,34 +3436,42 @@ function traduzErroAuth(e){
       return Array.from({length:faltam}).map(()=>linhaAddJogador(timeIdx)).join('');
     };
     return `
-      <div class="card">
-        <div class="row" style="margin-bottom:2px;">
-          <div style="flex:1;text-align:center;color:${corA};font-weight:800;">${nomeA}</div>
-          <div style="flex:1;text-align:center;color:${corB};font-weight:800;">${nomeB}</div>
-        </div>
-        <div class="score-line"><span style="color:${corA};">${m.placar.A}</span><span class="vs">x</span><span style="color:${corB};">${m.placar.B}</span></div>
-        <div class="display" style="text-align:center;font-size:34px;color:var(--gold);margin-top:4px;" id="timer-display">${fmtTimer(elapsed)}</div>
-        ${souAdmin ? `
-          <div class="row" style="gap:10px;margin-top:14px;">
-            ${m.timer.rodando
-              ? `<button class="btn btn-ghost" style="flex:1;" data-action="pausar-timer">⏸️ Pausar</button>`
-              : `<button class="btn btn-gold" style="flex:1;" data-action="iniciar-timer">▶️ ${elapsed>0?'Retomar':'Iniciar'}</button>`}
-            <button class="btn btn-danger" style="flex:1;" data-action="fim-de-jogo">🏁 Fim de jogo</button>
+      <div class="card" style="padding:12px;">
+        <div class="row" style="align-items:center;">
+          <div style="flex:1;text-align:center;min-width:0;">
+            <div style="color:${corA};font-weight:800;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nomeA}</div>
           </div>
-          <button class="btn btn-ghost btn-block" style="margin-top:8px;" data-action="finalizar">🛑 Encerrar pelada</button>
-        ` : `<p class="lead" style="text-align:center;margin:10px 0 0;">Só o administrador controla o cronômetro e os eventos da partida.</p>`}
+          <div style="display:flex;align-items:baseline;gap:7px;flex-shrink:0;padding:0 6px;">
+            <span style="font-family:'Bebas Neue';font-size:26px;color:${corA};">${m.placar.A}</span>
+            <span style="font-size:12px;color:var(--ink-dim);font-weight:700;">x</span>
+            <span style="font-family:'Bebas Neue';font-size:26px;color:${corB};">${m.placar.B}</span>
+          </div>
+          <div style="flex:1;text-align:center;min-width:0;">
+            <div style="color:${corB};font-weight:800;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${nomeB}</div>
+          </div>
+        </div>
+        <div class="display" style="text-align:center;font-size:17px;color:var(--gold);margin-top:2px;font-family:'Bebas Neue';letter-spacing:1px;" id="timer-display">⏱ ${fmtTimer(elapsed)}</div>
+        ${souAdmin ? `
+          <div class="row" style="gap:6px;margin-top:8px;">
+            ${m.timer.rodando
+              ? `<button class="btn btn-ghost btn-sm" style="flex:1;" data-action="pausar-timer">⏸️ Pausar</button>`
+              : `<button class="btn btn-gold btn-sm" style="flex:1;" data-action="iniciar-timer">▶️ ${elapsed>0?'Retomar':'Iniciar'}</button>`}
+            <button class="btn btn-danger btn-sm" style="flex:1;" data-action="fim-de-jogo">🏁 Fim</button>
+            <button class="btn btn-ghost btn-sm" style="flex:1;" data-action="finalizar">🛑 Encerrar</button>
+          </div>
+        ` : `<p class="lead" style="text-align:center;margin:8px 0 0;font-size:11.5px;">Só o administrador controla o cronômetro e os eventos.</p>`}
       </div>
       ${souAdmin && ui.pedirSaidaTime ? renderEscolhaTimeSai(m) : ''}
-      ${souAdmin ? `<p class="lead">Toque num jogador pra registrar o que aconteceu com ele.</p>` : ''}
-      <div class="card">
-        <div class="row" style="align-items:flex-start;gap:12px;">
+      <div class="card" style="padding:12px;">
+        ${souAdmin ? `<p class="lead" style="margin:0 0 8px;font-size:11px;">Toque num jogador pra registrar o que aconteceu com ele.</p>` : ''}
+        <div class="row" style="align-items:flex-start;gap:10px;">
           <div style="flex:1;min-width:0;">
-            <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeA}" style="cursor:pointer;color:${corA};"`:`style="color:${corA};"`}>${nomeA}</div>
+            <div class="team-label" style="font-size:12.5px;margin-bottom:2px;${podeTrocarTimeAntes?`cursor:pointer;color:${corA};`:`color:${corA};`}" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeA}"`:''}>${nomeA}</div>
             ${jogadoresA.map(pl=>linhaJogador(pl,'A')).join('')}
             ${addJogadorRow(m.timeA, jogadoresA.length)}
           </div>
-          <div style="flex:1;min-width:0;border-left:1px solid var(--line);padding-left:12px;">
-            <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeB}" style="cursor:pointer;color:${corB};"`:`style="color:${corB};"`}>${nomeB}</div>
+          <div style="flex:1;min-width:0;border-left:1px solid var(--line);padding-left:10px;">
+            <div class="team-label" style="font-size:12.5px;margin-bottom:2px;${podeTrocarTimeAntes?`cursor:pointer;color:${corB};`:`color:${corB};`}" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeB}"`:''}>${nomeB}</div>
             ${jogadoresB.map(pl=>linhaJogador(pl,'B')).join('')}
             ${addJogadorRow(m.timeB, jogadoresB.length)}
           </div>
