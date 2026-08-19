@@ -113,6 +113,32 @@ function traduzErroAuth(e){
     location.href = url.toString();
   }
 
+  // ---------- Foto de perfil ----------
+  // Recorta em quadrado, redimensiona e comprime no próprio aparelho antes de salvar —
+  // os dados do app inteiro vivem num único documento no Firestore, então a foto tem que ser pequena (poucos KB).
+  function redimensionarFotoPerfil(file){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onerror = ()=> reject(new Error('leitura falhou'));
+      reader.onload = ()=>{
+        const img = new Image();
+        img.onerror = ()=> reject(new Error('imagem inválida'));
+        img.onload = ()=>{
+          const tam = 220;
+          const canvas = document.createElement('canvas');
+          canvas.width = tam; canvas.height = tam;
+          const ctx = canvas.getContext('2d');
+          const lado = Math.min(img.width, img.height);
+          const sx = (img.width-lado)/2, sy = (img.height-lado)/2;
+          ctx.drawImage(img, sx, sy, lado, lado, 0, 0, tam, tam);
+          resolve(canvas.toDataURL('image/jpeg', 0.75));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   // ---------- Instalar como app (PWA) ----------
   let deferredInstallPrompt = null;
   function appRodandoInstalado(){
@@ -210,6 +236,19 @@ function traduzErroAuth(e){
 
   function myPlayer(){ return data.players.find(p=>p.id===me); }
   function playerById(id){ return data.players.find(p=>p.id===id); }
+  function iniciaisDe(pl){ return (pl && pl.name) ? pl.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?'; }
+  // Conteúdo interno de qualquer avatar (topbar, jersey, pitch): foto do perfil se tiver, senão iniciais —
+  // quem chama continua controlando o tamanho/formato via a div/classe que envolve isso.
+  function avatarConteudo(pl){
+    if(!pl) return '?';
+    if(pl.foto) return `<img src="${pl.foto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" alt="">`;
+    return iniciaisDe(pl);
+  }
+  // Tamanho-alvo de um time no sorteio/ao vivo: jogadores de linha configurados na associação + 1 goleiro.
+  function tamanhoTimeAlvo(){
+    const a = associacaoAtual();
+    return ((a && a.jogadoresLinha) || 7) + 1;
+  }
   function groupById(id){ return data.groups.find(g=>g.id===id); }
   function matchById(id){ return data.matches.find(m=>m.id===id); }
   function associacaoById(id){ return data.associacoes.find(a=>a.id===id); }
@@ -420,10 +459,9 @@ function traduzErroAuth(e){
     const conteudo = !c
       ? `<div class="pitch-pos-tag">${POS_ABBR[posicaoKey]||''}</div><div class="pitch-avatar" style="opacity:.3;">–</div><div class="pitch-name" style="opacity:.4;">Vazio</div>`
       : (()=>{
-          const initials = c.pl.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
           const isMelhor = c.pl.id===melhorId;
           return `<div class="pitch-pos-tag">${POS_ABBR[posicaoKey]||''}</div>
-            <div class="pitch-avatar${isMelhor?' pitch-avatar-mvp':''}">${initials}${badge?`<span class="pitch-badge">${badge}</span>`:''}${isMelhor?`<span class="pitch-badge pitch-badge-left">⭐</span>`:''}</div>
+            <div class="pitch-avatar${isMelhor?' pitch-avatar-mvp':''}">${avatarConteudo(c.pl)}${badge?`<span class="pitch-badge">${badge}</span>`:''}${isMelhor?`<span class="pitch-badge pitch-badge-left">⭐</span>`:''}</div>
             <div class="pitch-name">${c.pl.name.split(' ')[0]}</div>
             <div class="pitch-nota">${c.nota.toFixed(1)}</div>`;
         })();
@@ -450,7 +488,7 @@ function traduzErroAuth(e){
       return `<div class="card"><div class="empty" style="padding:20px 0;"><span class="ball">🏆</span>Assim que uma pelada for finalizada e os jogadores avaliados, a seleção da semana aparece aqui.</div></div>`;
     }
     const slots = [];
-    slots.push(renderPitchPlayer(sel.goleiro, 'Goleiro', '🧤', sel.melhorId, 9, 50));
+    slots.push(renderPitchPlayer(sel.goleiro, 'Goleiro', '🧤', sel.melhorId, 13, 50));
     const filas = agruparLinhasPorFileira(sel.linhas.map(l=>l.posicao));
     const k = filas.length;
     filas.forEach((posicoesDaFileira,i)=>{
@@ -1248,7 +1286,6 @@ function traduzErroAuth(e){
   function renderTopbar(){
     const p = myPlayer();
     const a = associacaoAtual();
-    const initials = p ? p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
     const naoLidas = a ? (a.notificacoes||[]).filter(n=>n.jogadorId===me && !n.lida).length : 0;
     return `
       <div class="topbar">
@@ -1262,7 +1299,7 @@ function traduzErroAuth(e){
             🔔
             ${naoLidas>0 ? `<span style="position:absolute;top:-4px;right:-4px;background:#e8917a;color:#2b1f06;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;">${naoLidas>9?'9+':naoLidas}</span>` : ''}
           </div>
-          <div class="avatar" data-action="abrir-perfil-pessoal">${initials}</div>
+          <div class="avatar" data-action="abrir-perfil-pessoal">${avatarConteudo(p)}</div>
         </div>
       </div>
     `;
@@ -2023,7 +2060,6 @@ function traduzErroAuth(e){
     const mesKey = mesAtualKey();
     const souAdmin = a.adminId===me;
     const p = myPlayer();
-    const initials = p.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
     const editando = souAdmin && ui.finEditando;
     if(editando && !ui.draftFinanceiro){
       ui.draftFinanceiro = {
@@ -2096,7 +2132,7 @@ function traduzErroAuth(e){
       <div class="card">
         <div class="row" style="align-items:center;">
           <div style="display:flex;align-items:center;gap:10px;">
-            <div class="avatar" style="width:38px;height:38px;font-size:13px;">${initials}</div>
+            <div class="avatar" style="width:38px;height:38px;font-size:13px;">${avatarConteudo(p)}</div>
             <div class="name">${p.name}</div>
           </div>
           <div style="font-family:'Bebas Neue';font-size:20px;color:${saldoTotal>0?'#e8917a':'var(--gold)'};">R$ ${saldoTotal.toFixed(2)}</div>
@@ -3152,7 +3188,7 @@ function traduzErroAuth(e){
       const estilo = `${semBorda?'border-bottom:none;':''}${selecionado?'background:rgba(228,185,76,.14);border-radius:10px;':''}${podeMexer?'cursor:pointer;':''}`;
       return `
         <div class="list-row" style="${estilo}" ${podeMexer?`data-lobby-tap="${timeIdx}|${pid}" role="button" tabindex="0"`:''}>
-          <div class="jersey" style="width:30px;height:30px;font-size:11px;border-color:${cor};color:${cor};">⭐${matchRating(m,pl)}</div>
+          <div class="jersey" style="width:30px;height:30px;font-size:11px;border-color:${cor};color:${cor};overflow:hidden;">${avatarConteudo(pl)}</div>
           <div style="flex:1;min-width:0;">
             <div class="name" style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pl.name}</div>
             <div class="meta" style="font-size:10.5px;">${matchPos(m,pl)}</div>
@@ -3164,7 +3200,7 @@ function traduzErroAuth(e){
     const rosterA = m.times[timeA] || [];
     const rosterB = timeB!=null ? (m.times[timeB] || []) : [];
     const corA = corTimeM(m,timeA), corB = timeB!=null ? corTimeM(m,timeB) : null;
-    const linhas = Math.max(rosterA.length, rosterB.length);
+    const linhas = Math.max(rosterA.length, rosterB.length, podeMexer?tamanhoTimeAlvo():0);
     const tituloTime = (idx, cor) => `
       <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;">
         <span ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}"`:''} style="text-align:center;color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;${podeMexer?'cursor:pointer;':''}">${nomeTime(m,idx).toUpperCase()}</span>
@@ -3186,12 +3222,13 @@ function traduzErroAuth(e){
     const filaTimes = (m.filaIdx||[]).map(idx=>{
       const cor = corTimeM(m,idx);
       const roster = m.times[idx] || [];
+      const faltam = podeMexer ? Math.max(0, tamanhoTimeAlvo() - roster.length) : 0;
       return `
         <div style="margin-top:18px;text-align:center;">
           <span ${podeMexer?`data-action="abrir-menu-time" data-time-idx="${idx}"`:''} style="color:${cor};font-weight:800;font-family:'Bebas Neue';letter-spacing:1px;${podeMexer?'cursor:pointer;':''}">${nomeTime(m,idx).toUpperCase()}</span>
           <span style="color:var(--ink-dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px;"> · Próximo a jogar</span>
         </div>
-        <div class="card" style="border-top:3px solid ${cor};">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}${podeMexer?vagaVazia(idx,false):''}</div>
+        <div class="card" style="border-top:3px solid ${cor};">${roster.map(pid=>jogadorTag(pid, idx, cor, false)).join('')}${Array.from({length:faltam}).map(()=>vagaVazia(idx,false)).join('')}</div>
       `;
     }).join('');
     return `
@@ -3337,12 +3374,11 @@ function traduzErroAuth(e){
         </div>`;
     }
     const linhaJogador = (pl, slot) => {
-      const initials = pl.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
       const cor = slot==='A'?corA:corB;
       const selecionado = souAdmin && ui.resultadoJogadorId===pl.id;
       return `
         <div class="list-row" ${souAdmin?`data-toggle-resultado="${pl.id}" style="cursor:pointer;"`:''} style="${selecionado?'background:var(--bg2);border-radius:8px;':''}">
-          <div class="jersey" style="width:28px;height:28px;font-size:11px;flex-shrink:0;border-color:${cor};color:${cor};">${initials}</div>
+          <div class="jersey" style="width:28px;height:28px;font-size:11px;flex-shrink:0;border-color:${cor};color:${cor};overflow:hidden;">${avatarConteudo(pl)}</div>
           <div style="flex:1;min-width:0;">
             <div class="name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pl.name}</div>
             <div class="meta">${matchPos(m,pl)}</div>
@@ -3359,11 +3395,18 @@ function traduzErroAuth(e){
     const aindaNaoComecou = elapsed===0 && !m.timer.rodando;
     const podeTrocarTimeAntes = souAdmin && aindaNaoComecou && (m.filaIdx||[]).length>0;
     const podeAdicionar = souAdmin && m.status!=='finalizada';
-    const addJogadorRow = timeIdx => podeAdicionar ? `
+    const linhaAddJogador = timeIdx => `
       <div class="list-row" style="cursor:pointer;color:var(--ink-dim);" data-action="abrir-add-jogador-time" data-time-idx="${timeIdx}">
         <div class="jersey" style="width:28px;height:28px;font-size:13px;border-style:dashed;flex-shrink:0;">➕</div>
         <div class="name" style="font-size:12.5px;color:var(--ink-dim);">Adicionar jogador</div>
-      </div>` : '';
+      </div>`;
+    // Mostra uma linha "Adicionar jogador" pra cada vaga que falta até o alvo (linha + goleiro da associação),
+    // não só uma — se faltam 3, aparecem os 3, sem precisar reabrir o modal um de cada vez.
+    const addJogadorRow = (timeIdx, atual) => {
+      if(!podeAdicionar) return '';
+      const faltam = Math.max(0, tamanhoTimeAlvo() - atual);
+      return Array.from({length:faltam}).map(()=>linhaAddJogador(timeIdx)).join('');
+    };
     return `
       <div class="card">
         <div class="row" style="margin-bottom:2px;">
@@ -3392,12 +3435,12 @@ function traduzErroAuth(e){
           <div style="flex:1;min-width:0;">
             <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeA}" style="cursor:pointer;color:${corA};"`:`style="color:${corA};"`}>${nomeA}</div>
             ${jogadoresA.map(pl=>linhaJogador(pl,'A')).join('')}
-            ${addJogadorRow(m.timeA)}
+            ${addJogadorRow(m.timeA, jogadoresA.length)}
           </div>
           <div style="flex:1;min-width:0;border-left:1px solid var(--line);padding-left:12px;">
             <div class="team-label" ${podeTrocarTimeAntes?`data-action="abrir-menu-time" data-time-idx="${m.timeB}" style="cursor:pointer;color:${corB};"`:`style="color:${corB};"`}>${nomeB}</div>
             ${jogadoresB.map(pl=>linhaJogador(pl,'B')).join('')}
-            ${addJogadorRow(m.timeB)}
+            ${addJogadorRow(m.timeB, jogadoresB.length)}
           </div>
         </div>
       </div>
@@ -4339,6 +4382,15 @@ function traduzErroAuth(e){
     return `
       <button class="btn btn-ghost btn-sm" data-action="voltar-config" style="margin-bottom:14px;">← Configurações</button>
       <h1 class="page-title">🙋 Meu perfil</h1>
+      <div class="card" style="text-align:center;">
+        <div style="position:relative;width:88px;height:88px;margin:0 auto 8px;">
+          <div class="avatar" style="width:88px;height:88px;font-size:26px;">${avatarConteudo(p)}</div>
+          <div class="icon-btn-sm" data-action="trocar-foto-perfil" title="Alterar foto" style="position:absolute;bottom:-2px;right:-2px;border-radius:50%;background:var(--gold);color:var(--gold-ink);border:2px solid var(--card2);cursor:pointer;">📷</div>
+        </div>
+        <input type="file" id="input-foto-perfil" accept="image/*" style="display:none;">
+        <div class="name" style="margin-top:2px;">${p.name}</div>
+        ${p.foto ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="remover-foto-perfil">Remover foto</button>` : `<p class="lead" style="margin:6px 0 0;">Toque no 📷 pra adicionar uma foto de perfil.</p>`}
+      </div>
       <div class="card">
         <div class="list-row" data-open-config="desempenho" style="cursor:pointer;">
           <div class="name" style="flex:1;">📊 Performance</div><div class="meta">›</div>
@@ -5444,6 +5496,26 @@ function traduzErroAuth(e){
     if(atualizarAppBtn) atualizarAppBtn.onclick = ()=>{
       atualizarAppBtn.querySelector('.meta').textContent = 'Atualizando…';
       limparCacheEAtualizar();
+    };
+
+    const trocarFotoBtn = document.querySelector('[data-action="trocar-foto-perfil"]');
+    const inputFotoPerfil = document.getElementById('input-foto-perfil');
+    if(trocarFotoBtn && inputFotoPerfil) trocarFotoBtn.onclick = ()=> inputFotoPerfil.click();
+    if(inputFotoPerfil) inputFotoPerfil.onchange = async ()=>{
+      const file = inputFotoPerfil.files && inputFotoPerfil.files[0];
+      if(!file) return;
+      try{
+        const dataUrl = await redimensionarFotoPerfil(file);
+        const p = myPlayer(); if(!p) return;
+        p.foto = dataUrl;
+        await saveData(); showToast('Foto de perfil atualizada!'); render();
+      }catch(e){ showToast('Não deu pra usar essa imagem. Tenta outra.'); }
+    };
+    const removerFotoBtn = document.querySelector('[data-action="remover-foto-perfil"]');
+    if(removerFotoBtn) removerFotoBtn.onclick = async ()=>{
+      const p = myPlayer(); if(!p) return;
+      p.foto = null;
+      await saveData(); showToast('Foto removida.'); render();
     };
 
     document.querySelectorAll('[data-fin-marcar-atraso]').forEach(el=> el.onclick = async ()=>{
