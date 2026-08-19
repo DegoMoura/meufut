@@ -233,6 +233,14 @@ function traduzErroAuth(e){
     try{ localStorage.setItem('peladaapp:associacaoId', associacaoId||''); }catch(e){}
   }
   function showToast(msg){ ui.toast = msg; render(); setTimeout(()=>{ ui.toast=null; render(); }, 2400); }
+  // Ao Vivo: toque num jogador -> ações -> gol pede assistência -> tudo no mesmo lugar da tela,
+  // em vez de pular pra um menu lá em cima. Isso rola até esse painel ficar visível depois de cada passo.
+  function scrollParaPainelAcao(){
+    requestAnimationFrame(()=>{
+      const el = document.getElementById('painel-acao-jogador');
+      if(el && el.innerHTML.trim()) el.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  }
 
   function myPlayer(){ return data.players.find(p=>p.id===me); }
   function playerById(id){ return data.players.find(p=>p.id===id); }
@@ -3443,9 +3451,6 @@ function traduzErroAuth(e){
         ` : `<p class="lead" style="text-align:center;margin:10px 0 0;">Só o administrador controla o cronômetro e os eventos da partida.</p>`}
       </div>
       ${souAdmin && ui.pedirSaidaTime ? renderEscolhaTimeSai(m) : ''}
-      ${assistPicker}
-      ${falhaPicker}
-      ${substituicaoPicker}
       ${souAdmin ? `<p class="lead">Toque num jogador pra registrar o que aconteceu com ele.</p>` : ''}
       <div class="card">
         <div class="row" style="align-items:flex-start;gap:12px;">
@@ -3462,7 +3467,7 @@ function traduzErroAuth(e){
         </div>
       </div>
       ${(souAdmin && ui.menuTimeIdx!=null) ? renderMenuTime(m, ui.menuTimeIdx) : ''}
-      ${painelSelecionado}
+      <div id="painel-acao-jogador">${substituicaoPicker || falhaPicker || assistPicker || painelSelecionado}</div>
       <div class="eyebrow" style="margin-top:14px;">📜 Histórico da partida</div>
       <div class="card">
         ${historico.length===0 ? `<p class="lead" style="margin:0;">Nenhum evento registrado ainda.</p>` :
@@ -6226,8 +6231,10 @@ function traduzErroAuth(e){
 
     document.querySelectorAll('[data-toggle-resultado]').forEach(el=> el.onclick = ()=>{
       const pid = el.dataset.toggleResultado;
-      ui.resultadoJogadorId = ui.resultadoJogadorId===pid ? null : pid;
+      const abrindo = ui.resultadoJogadorId!==pid;
+      ui.resultadoJogadorId = abrindo ? pid : null;
       render();
+      if(abrindo) scrollParaPainelAcao();
     });
 
     document.querySelectorAll('[data-evento]').forEach(el=> el.onclick = async ()=>{
@@ -6244,7 +6251,7 @@ function traduzErroAuth(e){
         logEvento(m, { nome: pl.name, label, pid, ev, team, tipo:'evento' });
         ui.pedirAssistencia = {pid, team};
         ui.resultadoJogadorId = null;
-        await saveData(); render();
+        await saveData(); render(); scrollParaPainelAcao();
         return;
       }
       if(ev==='golSofrido' || ev==='golContra'){
@@ -6271,7 +6278,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-abrir-falha]').forEach(el=> el.onclick = ()=>{
       const [pid, team] = el.dataset.abrirFalha.split('|');
       ui.pedirFalha = {pid, team};
-      render();
+      render(); scrollParaPainelAcao();
     });
     document.querySelectorAll('[data-falha-tipo]').forEach(el=> el.onclick = async ()=>{
       const m = matchById(ui.matchId); const pedir = ui.pedirFalha; if(!pedir) return;
@@ -6291,11 +6298,11 @@ function traduzErroAuth(e){
 
     document.querySelectorAll('[data-action="abrir-substituicao"]').forEach(el=> el.onclick = ()=>{
       ui.substituicaoPendente = {tipo:'substituicao', saiuId: el.dataset.pid, team: el.dataset.team};
-      render();
+      render(); scrollParaPainelAcao();
     });
     document.querySelectorAll('[data-action="abrir-troca-jogador"]').forEach(el=> el.onclick = ()=>{
       ui.substituicaoPendente = {tipo:'correcao', saiuId: el.dataset.pid, team: el.dataset.team};
-      render();
+      render(); scrollParaPainelAcao();
     });
     const cancelarSubBtn = document.querySelector('[data-action="cancelar-substituicao"]');
     if(cancelarSubBtn) cancelarSubBtn.onclick = ()=>{ ui.substituicaoPendente=null; render(); };
