@@ -245,10 +245,8 @@ function traduzErroAuth(e){
     return iniciaisDe(pl);
   }
   // Tamanho-alvo de um time no sorteio/ao vivo: jogadores de linha configurados na associação + 1 goleiro.
-  function tamanhoTimeAlvo(){
-    const a = associacaoAtual();
-    return ((a && a.jogadoresLinha) || 7) + 1;
-  }
+  // Tamanho máximo de um time (sorteio, Times, Ao vivo): fixo em 7, nunca pode passar disso.
+  function tamanhoTimeAlvo(){ return 7; }
   function groupById(id){ return data.groups.find(g=>g.id===id); }
   function matchById(id){ return data.matches.find(m=>m.id===id); }
   function associacaoById(id){ return data.associacoes.find(a=>a.id===id); }
@@ -2625,7 +2623,7 @@ function traduzErroAuth(e){
       craques.forEach((cr,i)=>{ if(times[i]) times[i].push(cr.id); });
       poolRestante = poolLinha.filter(p=>!craqueIds.has(p.id));
     }
-    const tamanho = Math.max(1, Math.floor(jogadores.length / numTimes));
+    const tamanho = Math.min(tamanhoTimeAlvo(), Math.max(1, Math.floor(jogadores.length / numTimes)));
     let idx=0, timeAtual=0, sentido=1;
     while(idx<poolRestante.length && times.some(t=>t.length<tamanho)){
       if(times[timeAtual].length < tamanho){ times[timeAtual].push(poolRestante[idx].id); idx++; }
@@ -6025,6 +6023,11 @@ function traduzErroAuth(e){
       if(timeIdx==null) return;
       const tipo = associacaoAtual()?associacaoAtual().campoTipo:'Campo';
       const pl = playerById(pid); if(!pl) return;
+      m.times[timeIdx] = m.times[timeIdx] || [];
+      if(m.times[timeIdx].length >= tamanhoTimeAlvo()){
+        showToast(`${nomeTime(m,timeIdx)} já está com o máximo de ${tamanhoTimeAlvo()} jogadores.`);
+        return;
+      }
       if(!m.confirmed.includes(pid)) m.confirmed.push(pid);
       m.declined = (m.declined||[]).filter(id=>id!==pid);
       m.waitlist = (m.waitlist||[]).filter(id=>id!==pid);
@@ -6032,7 +6035,6 @@ function traduzErroAuth(e){
       m.positionByPlayer = m.positionByPlayer || {};
       if(!m.positionByPlayer[pid]) m.positionByPlayer[pid] = posicaoPrincipalPara(pl, tipo);
       m.confirmadoEm = m.confirmadoEm || {}; if(!m.confirmadoEm[pid]) m.confirmadoEm[pid] = new Date().toISOString();
-      m.times[timeIdx] = m.times[timeIdx] || [];
       if(!m.times[timeIdx].includes(pid)) m.times[timeIdx].push(pid);
       const nomeDoTime = nomeTime(m, timeIdx);
       ui.modal = null; ui.modalAddJogadorTimeIdx = null;
@@ -6084,10 +6086,14 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-mover-jogador-time]').forEach(el=> el.onclick = async ()=>{
       const destino = parseInt(el.dataset.moverJogadorTime);
       const m = matchById(ui.matchId); const sel = ui.lobbySel; if(!sel) return;
+      m.times[destino] = m.times[destino] || [];
+      if(m.times[destino].length >= tamanhoTimeAlvo()){
+        showToast(`${nomeTime(m,destino)} já está com o máximo de ${tamanhoTimeAlvo()} jogadores.`);
+        return;
+      }
       const atual = m.times[sel.timeIdx];
       const i = atual.indexOf(sel.pid);
       if(i>=0) atual.splice(i,1);
-      m.times[destino] = m.times[destino] || [];
       m.times[destino].push(sel.pid);
       const nomeDestino = nomeTime(m, destino);
       const plName = playerById(sel.pid)?.name || '';
