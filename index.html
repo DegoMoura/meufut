@@ -1572,7 +1572,6 @@ function traduzErroAuth(e){
     if(sub==='horario') return renderCfgHorario(g, podeEditar);
     if(sub==='local') return renderCfgLocal(g, podeEditar);
     if(sub==='notificacoes') return renderCfgNotificacoes(g, podeEditar);
-    if(sub==='ranking') return renderCfgRanking(g, podeEditar);
     if(sub==='sorteio') return renderCfgSorteio(g, podeEditar);
     if(sub==='fila') return renderCfgFila(g, podeEditar);
     if(sub==='historico') return renderCfgHistorico(g);
@@ -1673,29 +1672,6 @@ function traduzErroAuth(e){
             ${podeEditar
               ? `<button class="btn btn-sm ${g.notificacoes[it.key]?'btn-gold':'btn-ghost'}" data-toggle-notif-fut="${it.key}" data-gid="${g.id}">${g.notificacoes[it.key]?'Ativado':'Desativado'}</button>`
               : `<span class="badge ${g.notificacoes[it.key]?'badge-done':'badge-open'}">${g.notificacoes[it.key]?'Ativado':'Desativado'}</span>`}
-          </div>`).join('')}
-      </div>
-    `;
-  }
-  const RANKING_CATEGORIAS = [
-    {key:'craque', icon:'🏆', label:'Craque'}, {key:'artilheiro', icon:'⚽', label:'Artilheiro'},
-    {key:'garcom', icon:'🅰️', label:'Garçom'}, {key:'xerifao', icon:'🛡️', label:'Xerifão'},
-    {key:'paredao', icon:'🧤', label:'Paredão'}, {key:'bolaMurcha', icon:'😅', label:'Bola Murcha'},
-    {key:'pereba', icon:'📉', label:'Pereba'},
-  ];
-  function renderCfgRanking(g, podeEditar){
-    g.rankingHabilitados = g.rankingHabilitados || Object.fromEntries(RANKING_CATEGORIAS.map(c=>[c.key,true]));
-    return `
-      ${cfgVoltarBtn()}
-      <h1 class="page-title">📊 Ranking e Destaques</h1>
-      <p class="lead">Escolha quais categorias aparecem na Resenha e nos destaques da pelada.</p>
-      <div class="card">
-        ${RANKING_CATEGORIAS.map(c=>`
-          <div class="list-row">
-            <div style="flex:1;" class="name">${c.icon} ${c.label}</div>
-            ${podeEditar
-              ? `<button class="btn btn-sm ${g.rankingHabilitados[c.key]?'btn-gold':'btn-ghost'}" data-toggle-rank-fut="${c.key}" data-gid="${g.id}">${g.rankingHabilitados[c.key]?'Ativado':'Desativado'}</button>`
-              : `<span class="badge ${g.rankingHabilitados[c.key]?'badge-done':'badge-open'}">${g.rankingHabilitados[c.key]?'Ativado':'Desativado'}</span>`}
           </div>`).join('')}
       </div>
     `;
@@ -1928,7 +1904,6 @@ function traduzErroAuth(e){
       {key:'local', icon:'📍', label:'Local dos jogos'},
       {key:'notificacoes', icon:'🔔', label:'Notificações'},
       {key:'formacao', icon:'🧩', label:'Configurar Formação'},
-      {key:'ranking', icon:'📊', label:'Ranking e Destaques'},
       {key:'sorteio', icon:'⚖️', label:'Sorteio'},
       {key:'fila', icon:'⏳', label:'Fila de espera'},
       {key:'historico', icon:'🕓', label:'Histórico de atividades'},
@@ -5177,12 +5152,6 @@ function traduzErroAuth(e){
       const g = groupById(el.dataset.gid);
       g.notificacoes = g.notificacoes || {};
       g.notificacoes[el.dataset.toggleNotifFut] = !g.notificacoes[el.dataset.toggleNotifFut];
-      await saveData(); render();
-    });
-    document.querySelectorAll('[data-toggle-rank-fut]').forEach(el=> el.onclick = async ()=>{
-      const g = groupById(el.dataset.gid);
-      g.rankingHabilitados = g.rankingHabilitados || {};
-      g.rankingHabilitados[el.dataset.toggleRankFut] = !g.rankingHabilitados[el.dataset.toggleRankFut];
       await saveData(); render();
     });
     if(ui.futConfigSub==='sorteio' && ui.draftCfgSorteio){
