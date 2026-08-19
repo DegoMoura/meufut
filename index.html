@@ -2566,10 +2566,9 @@ function traduzErroAuth(e){
 
   // Sorteio configurável (tela "Sortear times"): número de times livre + prioridades ligáveis/desligáveis
   function defaultSorteioConfig(baseIds, m, g){
-    const a = associacaoAtual();
-    const tipoCampo = a ? a.campoTipo : 'Campo';
-    const tamanhoPadrao = {Society:7, Futsal:5, Campo:11, 'Futebol 7':7, 'Futebol 11':11}[tipoCampo] || 7;
-    const numTimes = Math.max(2, Math.round((baseIds.length||tamanhoPadrao) / tamanhoPadrao));
+    // Nº de times suficiente pra caber todo mundo em times de até 7 (arredondando pra cima, não pra
+    // mais perto) — assim quem sobra sempre cai num time de fila em vez de virar reserva escondida.
+    const numTimes = Math.max(2, Math.ceil((baseIds.length||tamanhoTimeAlvo()) / tamanhoTimeAlvo()));
     return {
       numTimes, priorizarMensalistas: true, equilibrarPosicao: true, separarCraques: false,
       equilibrarNota: true, notaDoAdmin: false, goleiroFixo: false
@@ -2623,13 +2622,24 @@ function traduzErroAuth(e){
       craques.forEach((cr,i)=>{ if(times[i]) times[i].push(cr.id); });
       poolRestante = poolLinha.filter(p=>!craqueIds.has(p.id));
     }
-    const tamanho = Math.min(tamanhoTimeAlvo(), Math.max(1, Math.floor(jogadores.length / numTimes)));
-    let idx=0, timeAtual=0, sentido=1;
-    while(idx<poolRestante.length && times.some(t=>t.length<tamanho)){
+    const tamanho = tamanhoTimeAlvo();
+    let idx=0;
+    // Os dois primeiros times são os que entram em quadra — preenche eles primeiro, alternando pra
+    // manter o nível equilibrado entre os dois. Só depois de completos é que sobra gente pra fila.
+    const timesEmQuadra = Math.min(2, numTimes);
+    let timeAtual=0, sentido=1;
+    while(idx<poolRestante.length && times.slice(0,timesEmQuadra).some(t=>t.length<tamanho)){
       if(times[timeAtual].length < tamanho){ times[timeAtual].push(poolRestante[idx].id); idx++; }
       timeAtual += sentido;
-      if(timeAtual>=numTimes){ timeAtual=numTimes-1; sentido=-1; }
+      if(timeAtual>=timesEmQuadra){ timeAtual=timesEmQuadra-1; sentido=-1; }
       else if(timeAtual<0){ timeAtual=0; sentido=1; }
+    }
+    // O resto vai pra fila, um time de cada vez até completar 7 — assim fica óbvio qual time da fila
+    // ainda precisa de gente, em vez de espalhar uma vaguinha vazia em todo mundo.
+    let filaTimeIdx = timesEmQuadra;
+    while(idx<poolRestante.length && filaTimeIdx<numTimes){
+      if(times[filaTimeIdx].length < tamanho){ times[filaTimeIdx].push(poolRestante[idx].id); idx++; }
+      else { filaTimeIdx++; }
     }
     times.forEach(t=> t.sort((x,y)=> ordemPos.indexOf(matchPos(m,playerById(x))) - ordemPos.indexOf(matchPos(m,playerById(y)))));
     return { times, reservas: poolRestante.slice(idx).map(p=>p.id) };
