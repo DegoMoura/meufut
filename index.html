@@ -2810,9 +2810,18 @@ function traduzErroAuth(e){
     const tab = ui.matchTab || 'confirmacoes';
     const souAdmin = g.adminId===me;
     const estagioAtual = ESTAGIOS_FUT.find(e=>e.key===estagioAtualPartida(m)) || ESTAGIOS_FUT[0];
+    // Voltar tem que espelhar por onde a pessoa entrou: se veio direto da lista de Fut ou do Lobby
+    // (atalho pra próxima pelada, pulando a tela do Fut), voltar tem que pular essa tela também —
+    // senão aparece um "Fut" no meio do caminho que a pessoa nunca visitou de propósito.
+    const origemPartida = ui.matchOrigemView || 'grupo-detalhe';
+    const botaoVoltar = origemPartida==='grupos'
+      ? `<button class="btn btn-ghost btn-sm" data-nav="grupos" style="margin-bottom:12px;">← Fut</button>`
+      : origemPartida==='home'
+      ? `<button class="btn btn-ghost btn-sm" data-nav="home" style="margin-bottom:12px;">← Início</button>`
+      : `<button class="btn btn-ghost btn-sm" data-open-group="${g.id}" style="margin-bottom:12px;">← ${g.name}</button>`;
     return `
       <div class="row" style="align-items:flex-start;">
-        <button class="btn btn-ghost btn-sm" data-open-group="${g.id}" style="margin-bottom:12px;">← ${g.name}</button>
+        ${botaoVoltar}
         ${souAdmin ? `<button class="btn btn-ghost btn-sm" data-action="abrir-menu-partida" style="padding:6px 12px;">⋮</button>` : ''}
       </div>
       <h1 class="page-title">📅 ${fmtDate(m.date)}</h1>
@@ -4836,7 +4845,7 @@ function traduzErroAuth(e){
     data.matches.push(m2);
 
     await saveData();
-    ui.groupId = g.id; ui.matchId = m2.id; view = 'partida-detalhe'; ui.matchTab = 'partida'; ui.matchSubTab = 'acoes';
+    ui.groupId = g.id; ui.matchId = m2.id; ui.matchOrigemView = 'grupo-detalhe'; view = 'partida-detalhe'; ui.matchTab = 'partida'; ui.matchSubTab = 'acoes';
     showToast(`Demonstração criada! ${m2.confirmed.length-convidados.length} mensalistas confirmaram, ${talvez.length} de talvez, ${declinam.length} não vão — e ${convidados.length} convidados completaram os ${m2.confirmed.length} jogadores (4 goleiros, 4 times prontos).`);
     render();
   }
@@ -4874,6 +4883,9 @@ function traduzErroAuth(e){
     };
     document.querySelectorAll('[data-open-match]').forEach(el=> el.onclick = ()=>{
       const m = matchById(el.dataset.openMatch);
+      // Só grava de onde veio na primeira entrada na tela da partida — navegar entre partidas
+      // irmãs (ex: "Partidas de hoje" dentro da própria partida) não deve reescrever isso.
+      if(view!=='partida-detalhe') ui.matchOrigemView = view;
       ui.matchId = el.dataset.openMatch;
       const destino = m ? abaPadraoPartida(m, groupById(m.groupId)) : {tab:'confirmacoes'};
       ui.matchTab = destino.tab; ui.matchSubTab = destino.sub;
