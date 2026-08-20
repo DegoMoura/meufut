@@ -234,6 +234,15 @@ function traduzErroAuth(e){
     try{ localStorage.setItem('peladaapp:associacaoId', associacaoId||''); }catch(e){}
   }
   function showToast(msg){ ui.toast = msg; render(); setTimeout(()=>{ ui.toast=null; render(); }, 2400); }
+  // As telas de login/verificação/onboarding/associações/desempenho têm seu próprio caminho de
+  // renderização em render() (return antecipado, sem passar pelo bloco padrão que inclui o toast) —
+  // sem isso, um erro de "Criar conta" (por exemplo) fica só no estado, nunca aparece na tela,
+  // e para quem tá usando parece que nada aconteceu ao clicar.
+  function appendToast(root){
+    if(!ui.toast) return;
+    const app = root.querySelector('.app');
+    if(app) app.insertAdjacentHTML('beforeend', `<div class="toast">${ui.toast}</div>`);
+  }
   // Ao Vivo: toque num jogador -> ações -> gol pede assistência -> tudo no mesmo lugar da tela,
   // em vez de pular pra um menu lá em cima. Isso rola até esse painel ficar visível depois de cada passo.
   function scrollParaPainelAcao(){
@@ -600,13 +609,14 @@ function traduzErroAuth(e){
     const root = document.getElementById('root');
     aplicarTema();
     if(view==='loading'){ root.innerHTML = `<div class="app"><div class="empty">Carregando...</div></div>`; return; }
-    if(view==='login'){ root.innerHTML = renderLogin(); attachLogin(); return; }
-    if(view==='verify-email'){ root.innerHTML = renderVerifyEmail(); attachVerifyEmail(); return; }
-    if(view==='onboarding'){ root.innerHTML = renderOnboarding(); attachOnboarding(); return; }
-    if(view==='associacoes'){ root.innerHTML = renderAssociacoes(); attachAssociacoes(); return; }
+    if(view==='login'){ root.innerHTML = renderLogin(); attachLogin(); appendToast(root); return; }
+    if(view==='verify-email'){ root.innerHTML = renderVerifyEmail(); attachVerifyEmail(); appendToast(root); return; }
+    if(view==='onboarding'){ root.innerHTML = renderOnboarding(); attachOnboarding(); appendToast(root); return; }
+    if(view==='associacoes'){ root.innerHTML = renderAssociacoes(); attachAssociacoes(); appendToast(root); return; }
     if(view==='desempenho'){
       root.innerHTML = renderDesempenho();
       document.querySelector('[data-action="voltar-desempenho"]').onclick = ()=>{ view = associacaoId ? 'home' : 'associacoes'; render(); };
+      appendToast(root);
       return;
     }
     if(view==='perfil' && !associacaoId){
@@ -616,6 +626,7 @@ function traduzErroAuth(e){
       </div></div>`;
       attachGlobalHandlers();
       document.querySelector('[data-action="voltar-associacoes"]').onclick = ()=>{ view='associacoes'; render(); };
+      appendToast(root);
       return;
     }
 
