@@ -662,7 +662,10 @@ function traduzErroAuth(e){
     return `
       <div class="app"><div class="content" style="padding-top:60px;">
         <div class="row" style="align-items:flex-start;">
-          <div class="brand"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+          <div>
+            <div class="brand"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+            <div class="brand-sub">Organizando seu fut</div>
+          </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="icon-btn" data-action="toggle-tema-login" title="Alternar tema">${temaAtualEscuro()?'🌙':'☀️'}</div>
             ${podeOferecerInstalarApp() ? `<div class="icon-btn" data-action="abrir-instalar-app" title="Instalar aplicativo">📲</div>` : ''}
@@ -816,6 +819,7 @@ function traduzErroAuth(e){
     return `
       <div class="app"><div class="content" style="padding-top:60px;">
         <div class="brand"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+        <div class="brand-sub">Organizando seu fut</div>
         <div class="eyebrow" style="margin-top:30px;">Confirme seu e-mail</div>
         <h1 class="page-title">Quase lá</h1>
         <p class="lead">Enviamos um link de confirmação para <strong>${email}</strong>. Abra seu e-mail (e confira o spam) e toque no link pra ativar sua conta.</p>
@@ -850,7 +854,8 @@ function traduzErroAuth(e){
     const minhas = myAssociacoes();
     return `
       <div class="app"><div class="content" style="padding-top:44px;">
-        <div class="brand" style="margin-bottom:18px;"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+        <div class="brand"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+        <div class="brand-sub" style="margin-bottom:18px;">Organizando seu fut</div>
         <div class="row" style="gap:10px;margin-bottom:20px;">
           <button class="btn btn-ghost" style="flex:1;" data-goto="perfil">🙋 Meu perfil</button>
           <button class="btn btn-ghost" style="flex:1;" data-goto="desempenho">📊 Desempenho</button>
@@ -1234,7 +1239,8 @@ function traduzErroAuth(e){
   function renderOnboardingStep1(d){
     return `
       <div class="app"><div class="content" style="padding-top:34px;">
-        <div class="brand" style="margin-bottom:22px;"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+        <div class="brand"><span class="ball">${BRAND_ICON}</span> MEU<span style="color:var(--gold)">FUT</span></div>
+        <div class="brand-sub" style="margin-bottom:22px;">Organizando seu fut</div>
         <div class="eyebrow">Etapa 1 de 5</div>
         <h1 class="page-title">Dados pessoais</h1>
         <p class="lead">Essas informações ficam nos seus dados pessoais.</p>
