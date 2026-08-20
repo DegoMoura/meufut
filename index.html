@@ -259,6 +259,16 @@ function traduzErroAuth(e){
     if(pl.foto) return `<img src="${pl.foto}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" alt="">`;
     return iniciaisDe(pl);
   }
+  // Rótulo do vínculo do jogador com o Fut: sócio (mensalista), diarista, ou convidado de quem o adicionou.
+  // Admin e dono contam como sócio aqui — a distinção deles já aparece em Configurações > Jogadores.
+  function tipoJogadorTexto(g, pl){
+    if(!pl) return '';
+    if(pl.convidado){
+      const quem = pl.convidadoPor ? playerById(pl.convidadoPor) : null;
+      return quem ? `Convidado de ${quem.name}` : 'Convidado';
+    }
+    return (g && (g.diaristas||[]).includes(pl.id)) ? 'Diarista' : 'Sócio';
+  }
   // Tamanho-alvo de um time no sorteio/ao vivo: jogadores de linha configurados na associação + 1 goleiro.
   // Tamanho máximo de um time (sorteio, Times, Ao vivo): fixo em 7, nunca pode passar disso.
   function tamanhoTimeAlvo(){ return 7; }
@@ -3007,7 +3017,11 @@ function traduzErroAuth(e){
             const st = m.confirmed.includes(pl.id) ? 'vou' : (m.declined.includes(pl.id) ? 'nao' : '—');
             return `
             <div class="list-row">
-              <div class="name" style="flex:1;">${pl.name}</div>
+              <div class="jersey" style="width:30px;height:30px;font-size:12px;overflow:hidden;">${avatarConteudo(pl)}</div>
+              <div style="flex:1;min-width:0;">
+                <div class="name">${pl.name}</div>
+                <div class="meta">${tipoJogadorTexto(g,pl)}</div>
+              </div>
               <div class="chip-row">
                 <div class="chip ${st==='vou'?'active':''}" data-admin-confirm="${pl.id}" data-status="vou">Confirmado</div>
                 <div class="chip ${st==='nao'?'active':''}" data-admin-confirm="${pl.id}" data-status="nao">Não</div>
@@ -3026,8 +3040,12 @@ function traduzErroAuth(e){
     const waitlistPlayers = m.waitlist.map(playerById).filter(Boolean).sort(porOrdemConfirmacao);
     const ausentes = m.declined.map(playerById).filter(Boolean);
     const linhaJogador = pl => `
-      <div class="list-row"><div class="jersey">⭐${matchRating(m,pl)}</div>
-        <div><div class="name">${pl.name}</div><div class="meta">jogando de ${matchPos(m,pl)} · ${fmtDataHora(m.confirmadoEm[pl.id])}</div></div>
+      <div class="list-row">
+        <div class="jersey" style="width:32px;height:32px;font-size:13px;overflow:hidden;">${avatarConteudo(pl)}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="name">${pl.name}</div>
+          <div class="meta">Jogando de ${matchPos(m,pl)} · ${tipoJogadorTexto(g,pl)}</div>
+        </div>
         <div>✅</div>
       </div>`;
     return `
@@ -3051,8 +3069,13 @@ function traduzErroAuth(e){
           ${waitlistPlayers.map(pl=>{
             const ehDiarista = (g.diaristas||[]).includes(pl.id);
             return `
-            <div class="list-row"><div class="jersey">⭐${matchRating(m,pl)}</div>
-              <div><div class="name">${pl.name}</div><div class="meta">${matchPos(m,pl)} · ${fmtDataHora(m.confirmadoEm[pl.id])}</div>${ehDiarista?`<div class="meta" style="opacity:.7;">Motivo: é diarista</div>`:''}</div>
+            <div class="list-row">
+              <div class="jersey" style="width:32px;height:32px;font-size:13px;overflow:hidden;">${avatarConteudo(pl)}</div>
+              <div style="flex:1;min-width:0;">
+                <div class="name">${pl.name}</div>
+                <div class="meta">${matchPos(m,pl)} · ${tipoJogadorTexto(g,pl)}</div>
+                ${ehDiarista?`<div class="meta" style="opacity:.7;">Motivo: é diarista</div>`:''}
+              </div>
             </div>`;
           }).join('')}
         </div>` : ''}
@@ -3061,8 +3084,12 @@ function traduzErroAuth(e){
       <div class="card">
         ${ausentes.length===0 ? `<p class="lead" style="margin:0;">Ninguém marcou ausência ainda.</p>` :
           ausentes.map(pl=>`
-            <div class="list-row"><div class="jersey" style="opacity:.5;">⭐${matchRating(m,pl)}</div>
-              <div><div class="name" style="opacity:.7;">${pl.name}</div></div>
+            <div class="list-row">
+              <div class="jersey" style="width:32px;height:32px;font-size:13px;overflow:hidden;opacity:.5;">${avatarConteudo(pl)}</div>
+              <div style="flex:1;min-width:0;">
+                <div class="name" style="opacity:.7;">${pl.name}</div>
+                <div class="meta">${tipoJogadorTexto(g,pl)}</div>
+              </div>
             </div>`).join('')}
       </div>
     `;
@@ -4780,7 +4807,7 @@ function traduzErroAuth(e){
       return { id: uid(), name: nome, usuario:null, senha:null, googleConnected:false,
         whatsapp:'', nascimento:'', estado:'', cidade:'', genero:'', estadoCivil:'', filhos:'',
         posicaoPrincipal:{[tipoCampo]:pos}, pe:'Direito', altura:'', peso:'', pe_numero:'', timeCoracao:'',
-        starsByPosition: stars, foto:null, convidado:true,
+        starsByPosition: stars, foto:null, convidado:true, convidadoPor: me,
         stats:{jogos:0,gols:0,assistencias:0,vitorias:0,empates:0,derrotas:0,cartoes:0} };
     });
     data.players.push(...convidados);
@@ -5780,7 +5807,7 @@ function traduzErroAuth(e){
         const pl = { id: uid(), name:d.nome.trim(), usuario:null, senha:null, googleConnected:false,
           whatsapp:'', nascimento:'', estado:'', cidade:'', genero:'', estadoCivil:'', filhos:'',
           posicaoPrincipal:{[tipo]:d.posicao}, pe:'Direito', altura:'', peso:'', pe_numero:'', timeCoracao:'',
-          starsByPosition: stars, foto:null, convidado:true,
+          starsByPosition: stars, foto:null, convidado:true, convidadoPor: me,
           stats:{jogos:0,gols:0,assistencias:0,vitorias:0,empates:0,derrotas:0,cartoes:0} };
         data.players.push(pl);
         m.positionByPlayer[pl.id] = d.posicao;
