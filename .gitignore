@@ -18,3 +18,9 @@ dist/
 firebase-adminsdk*.json
 *.pem
 *.key
+
+# Capacitor: www/ é gerado a partir de index.html/style.css/etc. (rode sync-www.sh) — não
+# precisa versionar duas cópias do mesmo app. android/ e ios/ (gerados por "npx cap add")
+# ficam versionados normalmente, como o Capacitor recomenda.
+package-lock.json
+www/
