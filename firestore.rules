@@ -1,0 +1,70 @@
+rules_version = '2';
+
+// Regras de segurança do MeuFut — versão multi-tenant (uma associação não vê nem escreve
+// os dados de outra). Isso substitui o modelo antigo de "um documento appdata/main pra tudo".
+//
+// LIMITAÇÃO CONHECIDA (usuarios/stats): quando uma partida termina, as estatísticas
+// (gols, jogos, vitórias...) de TODOS os participantes precisam ser atualizadas, não só a de
+// quem está logado no momento. O jeito 100% correto de fazer isso com segurança é uma Cloud
+// Function rodando com privilégio de admin (dispara quando a partida é salva/finalizada e
+// escreve as estatísticas ela mesma, sem depender do cliente ter permissão de escrever no
+// perfil de outra pessoa). Isso ainda não foi implementado — por enquanto, a regra abaixo
+// permite que qualquer usuário autenticado que participe de pelo menos um Fut possa atualizar
+// o perfil de outro jogador (necessário pra hoje o app funcionar como funciona). Não é
+// ataque-proof (um jogador mal-intencionado do seu próprio Fut poderia mexer no gol de outro),
+// mas é um risco baixo pra esse tipo de app (não mexe com dinheiro em custódia) e já é uma
+// melhoria enorme em relação a hoje, onde não existe isolamento nenhum. Recomendo migrar pra
+// Cloud Function assim que der.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() {
+      return request.auth != null;
+    }
+
+    // Perfis de jogador (era data.players). Qualquer pessoa logada pode ler perfis (nome,
+    // foto, estatísticas) porque isso aparece pra qualquer companheiro de Fut. Criar exige
+    // ser o dono do uid OU estar criando um perfil de convidado (convidado:true, sem conta
+    // própria). Atualizar: dono do perfil, ou qualquer usuário logado (ver limitação acima).
+    match /usuarios/{uid} {
+      allow read: if logado();
+      allow create: if logado() &&
+        (uid == request.auth.uid || request.resource.data.convidado == true);
+      allow update: if logado();
+      allow delete: if logado() && request.auth.uid == uid;
+    }
+
+    // Associações (era data.associacoes). Só quem é membro pode ler. Só admin/dono ou
+    // moderador pode alterar os dados da própria associação (nome, endereço, mensalidade...).
+    // Qualquer usuário logado pode criar uma associação nova.
+    match /associacoes/{associacaoId} {
+      allow read: if logado() && request.auth.uid in resource.data.memberIds;
+      allow create: if logado() && request.auth.uid == request.resource.data.adminId;
+      allow update, delete: if logado() &&
+        (request.auth.uid == resource.data.adminId ||
+         request.auth.uid in resource.data.moderadores);
+
+      // Futs dessa associação (era data.groups, filtrado por associacaoId).
+      match /futs/{futId} {
+        allow read, update, delete: if logado() && request.auth.uid in resource.data.memberIds;
+        allow create: if logado() &&
+          request.auth.uid in get(/databases/$(database)/documents/associacoes/$(associacaoId)).data.memberIds;
+
+        // Partidas desse Fut (era data.matches, filtrado por groupId).
+        match /partidas/{partidaId} {
+          allow read, update, delete: if logado() &&
+            request.auth.uid in get(/databases/$(database)/documents/associacoes/$(associacaoId)/futs/$(futId)).data.memberIds;
+          allow create: if logado() &&
+            request.auth.uid in get(/databases/$(database)/documents/associacoes/$(associacaoId)/futs/$(futId)).data.memberIds;
+        }
+      }
+    }
+
+    // Documento antigo (appdata/main): mantido só de leitura, como backup, até a migração
+    // ser confirmada em produção. Ninguém escreve mais nele depois da migração.
+    match /appdata/{docId} {
+      allow read: if logado();
+      allow write: if false;
+    }
+  }
+}

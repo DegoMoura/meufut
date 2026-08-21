@@ -11,3 +11,10 @@ Thumbs.db
 node_modules/
 dist/
 .env
+
+# Chaves e credenciais (nunca commitar)
+*serviceAccount*.json
+*service-account*.json
+firebase-adminsdk*.json
+*.pem
+*.key
