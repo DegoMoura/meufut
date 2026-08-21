@@ -6,6 +6,9 @@
   "scripts": {
     "migrar:teste": "node migrar-para-multitenant.js --dry-run",
     "migrar": "node migrar-para-multitenant.js --write",
+    "limpar-demo:teste": "node limpar-jogadores-demo.js --dry-run",
+    "limpar-demo": "node limpar-jogadores-demo.js --write",
+    "limpar-demo:tudo": "node limpar-jogadores-demo.js --write --incluir-candidatos",
     "sync:www": "node sync-www.js",
     "cap:sync": "npm run sync:www && npx cap sync"
   },

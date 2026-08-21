@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MeuFut</string>
+    <string name="title_activity_main">MeuFut</string>
+    <string name="package_name">com.meufut.app</string>
+    <string name="custom_url_scheme">com.meufut.app</string>
+</resources>

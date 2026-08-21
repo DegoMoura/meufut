@@ -25,7 +25,10 @@ import {
   signOut, GoogleAuthProvider, OAuthProvider, signInWithPopup,
   sendEmailVerification, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import {
+  getFirestore, doc, collection, query, where, getDocs,
+  documentId, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCOtn46eQmQkYm5kmKXmgNzbg9chYbIpEs",
@@ -178,13 +181,8 @@ function traduzErroAuth(e){
     if(isPasswordProvider && !user.emailVerified){ view = 'verify-email'; render(); return; }
     me = user.uid;
     try{
-      const snap = await getDoc(doc(db,'appdata','main'));
-      if(snap.exists()){
-        const d2 = snap.data();
-        data = { players: d2.players||[], groups: d2.groups||[], matches: (d2.matches||[]).map(desempacotarTimesMatch), associacoes: d2.associacoes||[] };
-      }
-    }catch(e){ showToast('Erro ao carregar dados. Tente de novo.'); }
-    if(!data.associacoes) data.associacoes = [];
+      await carregarDadosDoUsuario();
+    }catch(e){ console.error('carregarDadosDoUsuario falhou:', e); showToast('Erro ao carregar dados. Tente de novo.'); }
     if(!data.players.find(p=>p.id===me)){
       const providerId = (user.providerData[0] && user.providerData[0].providerId) || 'password';
       ui.draftPlayer = { name: user.displayName||'', usuario: user.email||user.uid, senha:null,
@@ -214,21 +212,157 @@ function traduzErroAuth(e){
     if(!m.times || !m.times.length) return m;
     return { ...m, times: m.times.map(t=> Array.isArray(t) ? t : (t.ids||[])) };
   }
+
+  // ---------- Camada de dados (Firestore multi-tenant) ----------
+  // Estrutura: associacoes/{id} -> futs/{id} -> partidas/{id}, mais usuarios/{uid} pra perfis
+  // de jogador (ver firestore-schema.md). O resto do app continua lendo/escrevendo o objeto
+  // `data` local do jeito que sempre fez (data.players/groups/matches/associacoes) — só a
+  // forma de carregar e salvar mudou, pra não precisar reescrever as centenas de lugares que
+  // já leem/mutam `data` diretamente hoje.
+  let __lastSaved = { players: [], groups: [], matches: [], associacoes: [] };
+  function clonarParaSnapshot(arr){ return arr.map(x=> JSON.parse(JSON.stringify(x))); }
+
+  // Coleta candidatos a id de jogador dentro de qualquer objeto aninhado (confirmados, gols,
+  // cartões, pagamentos, avaliações etc.). Em vez de listar campo por campo — esse app já tem
+  // pelo menos umas 10 estruturas diferentes desse tipo espalhadas (confirmações, chegadas,
+  // estatísticas de partida, cobranças, mensalidade...) e sempre pode aparecer uma nova —
+  // isso varre tudo recursivamente e deixa a busca de perfis (buscarUsuariosPorIds) descartar
+  // o que não for um id de verdade. Incluir uma chave/valor a mais não tem custo real (só um
+  // id que não existe em "usuarios", a query correspondente simplesmente não retorna nada).
+  const RE_ID_ARRAY = /^[a-z0-9]{6,8}$|^[A-Za-z0-9]{20,32}$/;
+  function coletarIdsRecursivo(obj, out, profundidade){
+    profundidade = profundidade||0;
+    if(profundidade > 8 || !obj || typeof obj !== 'object') return;
+    if(Array.isArray(obj)){
+      obj.forEach(v=>{
+        if(typeof v==='string' && RE_ID_ARRAY.test(v)) out.add(v);
+        else if(v && typeof v==='object') coletarIdsRecursivo(v, out, profundidade+1);
+      });
+      return;
+    }
+    Object.keys(obj).forEach(k=>{
+      out.add(k);
+      const v = obj[k];
+      if(v && typeof v==='object') coletarIdsRecursivo(v, out, profundidade+1);
+    });
+  }
+  // Firestore só aceita até 30 valores por cláusula "in" — quebra em lotes quando precisar.
+  async function buscarUsuariosPorIds(ids){
+    const unicos = [...new Set(ids)].filter(Boolean);
+    const resultado = [];
+    for(let i=0;i<unicos.length;i+=30){
+      const lote = unicos.slice(i,i+30);
+      if(!lote.length) continue;
+      const snap = await getDocs(query(collection(db,'usuarios'), where(documentId(),'in', lote)));
+      snap.docs.forEach(d=> resultado.push({ ...d.data(), id:d.id }));
+    }
+    return resultado;
+  }
+  async function carregarDadosDoUsuario(){
+    const assocSnap = await getDocs(query(collection(db,'associacoes'), where('memberIds','array-contains', me)));
+    const associacoes = assocSnap.docs.map(d=> ({ ...d.data(), id:d.id }));
+
+    const groups = [];
+    const matches = [];
+    const idsReferenciados = new Set([me]);
+    for(const a of associacoes){
+      coletarIdsRecursivo(a, idsReferenciados);
+      const futsSnap = await getDocs(collection(db,'associacoes', a.id, 'futs'));
+      for(const futDoc of futsSnap.docs){
+        const g = { ...futDoc.data(), id: futDoc.id, associacaoId: a.id };
+        groups.push(g);
+        coletarIdsRecursivo(g, idsReferenciados);
+        const partidasSnap = await getDocs(collection(db,'associacoes', a.id, 'futs', g.id, 'partidas'));
+        partidasSnap.docs.forEach(pd=>{
+          const m = desempacotarTimesMatch({ ...pd.data(), id: pd.id, groupId: g.id });
+          matches.push(m);
+          coletarIdsRecursivo(m, idsReferenciados);
+        });
+      }
+    }
+    const players = await buscarUsuariosPorIds([...idsReferenciados]);
+
+    data = { players, groups, matches, associacoes };
+    __lastSaved = {
+      players: clonarParaSnapshot(players), groups: clonarParaSnapshot(groups),
+      matches: clonarParaSnapshot(matches), associacoes: clonarParaSnapshot(associacoes)
+    };
+  }
+  // Acha em qual associação um Fut está — olha nos dados atuais primeiro, e no último
+  // snapshot salvo depois (cobre o caso de salvar logo depois de excluir o Fut/associação).
+  function associacaoIdDoGrupo(groupId){
+    const atual = data.groups.find(g=>g.id===groupId) || __lastSaved.groups.find(g=>g.id===groupId);
+    return atual ? atual.associacaoId : null;
+  }
+  function diferencas(atuais, salvos){
+    const mapaAtual = new Map(atuais.map(x=>[x.id,x]));
+    const mapaSalvo = new Map(salvos.map(x=>[x.id,x]));
+    const mudou = [];
+    const removido = [];
+    mapaAtual.forEach((v,id)=>{
+      const antes = mapaSalvo.get(id);
+      if(!antes || JSON.stringify(antes)!==JSON.stringify(v)) mudou.push(v);
+    });
+    mapaSalvo.forEach((_,id)=>{ if(!mapaAtual.has(id)) removido.push(id); });
+    return { mudou, removido };
+  }
   let __saveQueue = Promise.resolve();
   async function saveData(){
-    // fila: nunca deixa dois setDoc rodarem ao mesmo tempo (evita corrida quando o jogador
-    // registra dois eventos rápido, tipo gol e assistência em seguida) + 1 retentativa silenciosa
-    const run = __saveQueue.then(async ()=>{
-      const payload = { ...data, matches: data.matches.map(empacotarTimesMatch) };
-      try{ await setDoc(doc(db,'appdata','main'), payload); }
-      catch(e){
-        console.error('saveData falhou, tentando de novo:', e);
-        try{ await setDoc(doc(db,'appdata','main'), payload); }
-        catch(e2){ console.error('saveData falhou de novo:', e2, e2 && e2.message); showToast('Erro ao salvar. Tente de novo.'); }
-      }
-    });
+    // fila: nunca deixa duas gravações rodarem ao mesmo tempo (evita corrida quando o jogador
+    // registra dois eventos rápido, tipo gol e assistência em seguida) + 1 retentativa silenciosa.
+    // Com os dados divididos por documento, cada gravação agora só toca os poucos registros
+    // que realmente mudaram (em vez do documento inteiro do app), então essa fila deixa de ser
+    // um gargalo conforme mais gente usa ao mesmo tempo.
+    const run = __saveQueue.then(()=> gravarDiferencas());
     __saveQueue = run;
     await run;
+  }
+  async function gravarDiferencas(tentativa){
+    try{
+      const dAssoc = diferencas(data.associacoes, __lastSaved.associacoes);
+      const dGroups = diferencas(data.groups, __lastSaved.groups);
+      const dMatches = diferencas(data.matches.map(empacotarTimesMatch), __lastSaved.matches.map(empacotarTimesMatch));
+      const dPlayers = diferencas(data.players, __lastSaved.players);
+
+      if(!dAssoc.mudou.length && !dAssoc.removido.length && !dGroups.mudou.length && !dGroups.removido.length &&
+         !dMatches.mudou.length && !dMatches.removido.length && !dPlayers.mudou.length && !dPlayers.removido.length){
+        return; // nada mudou desde a última gravação
+      }
+
+      const batch = writeBatch(db);
+      dAssoc.mudou.forEach(a=> batch.set(doc(db,'associacoes',a.id), a));
+      dAssoc.removido.forEach(id=> batch.delete(doc(db,'associacoes',id)));
+
+      dGroups.mudou.forEach(g=> batch.set(doc(db,'associacoes',g.associacaoId,'futs',g.id), g));
+      dGroups.removido.forEach(id=>{
+        const assocId = associacaoIdDoGrupo(id);
+        if(assocId) batch.delete(doc(db,'associacoes',assocId,'futs',id));
+      });
+
+      dMatches.mudou.forEach(m=>{
+        const assocId = associacaoIdDoGrupo(m.groupId);
+        if(assocId) batch.set(doc(db,'associacoes',assocId,'futs',m.groupId,'partidas',m.id), m);
+      });
+      dMatches.removido.forEach(id=>{
+        const antes = __lastSaved.matches.find(m=>m.id===id);
+        const assocId = antes ? associacaoIdDoGrupo(antes.groupId) : null;
+        if(assocId && antes) batch.delete(doc(db,'associacoes',assocId,'futs',antes.groupId,'partidas',id));
+      });
+
+      dPlayers.mudou.forEach(p=> batch.set(doc(db,'usuarios',p.id), p));
+      dPlayers.removido.forEach(id=> batch.delete(doc(db,'usuarios',id)));
+
+      await batch.commit();
+      __lastSaved = {
+        players: clonarParaSnapshot(data.players), groups: clonarParaSnapshot(data.groups),
+        matches: clonarParaSnapshot(data.matches), associacoes: clonarParaSnapshot(data.associacoes)
+      };
+    }catch(e){
+      console.error('gravarDiferencas falhou:', e);
+      if(!tentativa){ await gravarDiferencas(1); return; }
+      console.error('gravarDiferencas falhou de novo:', e, e && e.message);
+      showToast('Erro ao salvar. Tente de novo.');
+    }
   }
   async function saveMe(){
     try{ localStorage.setItem('peladaapp:associacaoId', associacaoId||''); }catch(e){}
