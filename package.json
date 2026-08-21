@@ -1,0 +1,13 @@
+{
+  "name": "meufut-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Scripts auxiliares do MeuFut (migração de dados etc.) — não faz parte do app em si, que continua sendo index.html puro.",
+  "scripts": {
+    "migrar:teste": "node migrar-para-multitenant.js --dry-run",
+    "migrar": "node migrar-para-multitenant.js --write"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

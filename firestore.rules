@@ -44,18 +44,20 @@ service cloud.firestore {
         (request.auth.uid == resource.data.adminId ||
          request.auth.uid in resource.data.moderadores);
 
-      // Futs dessa associação (era data.groups, filtrado por associacaoId).
+      // Futs dessa associação (era data.groups, filtrado por associacaoId). O limite de
+      // privacidade real no app é a ASSOCIAÇÃO, não o Fut individual: telas como Home,
+      // financeiro e desempenho já juntam todos os Futs de uma associação pra qualquer
+      // membro dela, independente de ele estar no elenco daquele Fut específico. Por isso
+      // a leitura/escrita aqui segue o memberIds da associação (documento pai), não do Fut.
       match /futs/{futId} {
-        allow read, update, delete: if logado() && request.auth.uid in resource.data.memberIds;
-        allow create: if logado() &&
+        allow read, write: if logado() &&
           request.auth.uid in get(/databases/$(database)/documents/associacoes/$(associacaoId)).data.memberIds;
 
-        // Partidas desse Fut (era data.matches, filtrado por groupId).
+        // Partidas desse Fut (era data.matches, filtrado por groupId). Mesma lógica: qualquer
+        // membro da associação pode ler/escrever, não só quem joga naquele Fut específico.
         match /partidas/{partidaId} {
-          allow read, update, delete: if logado() &&
-            request.auth.uid in get(/databases/$(database)/documents/associacoes/$(associacaoId)/futs/$(futId)).data.memberIds;
-          allow create: if logado() &&
-            request.auth.uid in get(/databases/$(database)/documents/associacoes/$(associacaoId)/futs/$(futId)).data.memberIds;
+          allow read, write: if logado() &&
+            request.auth.uid in get(/databases/$(database)/documents/associacoes/$(associacaoId)).data.memberIds;
         }
       }
     }
