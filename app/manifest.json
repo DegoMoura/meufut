@@ -1,0 +1,17 @@
+{
+  "name": "MeuFut",
+  "short_name": "MeuFut",
+  "description": "Organize peladas, sorteie times, registre gols e avalie os jogadores.",
+  "start_url": "/app/?pwa=1",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f2419",
+  "theme_color": "#0f2419",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
