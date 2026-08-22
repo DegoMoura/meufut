@@ -1647,12 +1647,33 @@ function traduzErroAuth(e){
         </div>`;
     }
     const a = associacaoAtual();
+    let torneioCard = '';
+    const meusGrupos = data.groups.filter(g=>g.associacaoId===associacaoId && g.memberIds.includes(me));
+    const torneiosAtivos = [];
+    meusGrupos.forEach(g=> torneiosDoFut(g).filter(t=>t.status!=='finalizado').forEach(t=> torneiosAtivos.push({t,g})));
+    torneiosAtivos.sort((x,y)=> (x.t.dataInicio||'').localeCompare(y.t.dataInicio||''));
+    if(torneiosAtivos[0]){
+      const { t, g } = torneiosAtivos[0];
+      const minimo = minimoJogadoresTorneio(t);
+      const statusInfo = t.status==='confirmacao' ? `${t.confirmados.length}/${minimo} confirmados` : (STATUS_TORNEIO_LABEL[t.status]||t.status);
+      torneioCard = `
+        <div class="eyebrow" style="margin-top:22px;">🏆 Torneio</div>
+        <div class="card" data-action="abrir-torneio-fut-direto" data-gid="${g.id}" data-tid="${t.id}" style="cursor:pointer;">
+          <div style="font-family:'Bebas Neue';font-size:20px;letter-spacing:.5px;">${t.nome}</div>
+          <div class="lead" style="margin:6px 0 10px;">${t.modalidade} · ${t.numTimes} times</div>
+          <div class="row">
+            <div style="font-size:13px;font-weight:700;color:var(--gold);">${statusInfo}</div>
+            <div class="btn btn-gold btn-sm">Ver torneio</div>
+          </div>
+        </div>`;
+    }
     return `
       <h1 class="page-title">Olá, ${p.name.split(' ')[0]} 👋</h1>
       <p class="lead" style="margin-bottom:14px;">🏛️ Lobby da ${a?a.name:'associação'}</p>
       <div class="eyebrow">🏆 Seleção da semana</div>
       ${renderSelecaoSemanaCard()}
       ${nextCard}
+      ${torneioCard}
       <div class="eyebrow" style="margin-top:22px;">📊 Suas estatísticas</div>
       ${renderEstatisticasLobby()}
     `;
@@ -1720,7 +1741,6 @@ function traduzErroAuth(e){
     const grupos = data.groups.filter(g=>g.associacaoId===associacaoId);
     const a = associacaoAtual();
     const souAdmin = souAdminAssoc();
-    const hoje = new Date().toISOString().slice(0,10);
     return `
       <h1 class="page-title">Fut</h1>
       <p class="lead">Cada Fut é uma turma fixa de pelada dentro da associação.</p>
@@ -1730,28 +1750,35 @@ function traduzErroAuth(e){
         grupos.map(g=>{
           const sou = g.memberIds.includes(me);
           const maxJog = (a && a.jogadoresLinha) ? a.jogadoresLinha*4 : g.maxPlayers;
-          const proxima = data.matches.filter(m=>m.groupId===g.id && m.status!=='finalizada' && m.date>=hoje).sort((x,y)=>x.date.localeCompare(y.date))[0];
-          const cardGrupo = `
-          <div class="card">
-            <div class="row" style="align-items:flex-start;">
-              <div style="cursor:pointer;flex:1;" ${proxima?`data-open-match="${proxima.id}"`:`data-open-group="${g.id}"`}>
-                <div style="font-family:'Bebas Neue';font-size:19px;">${g.name}</div>
-                <div class="meta">${g.tipo} · ${g.diaPadrao} ${g.horarioPadrao} · 📍 ${g.local}</div>
-                <div class="meta">até ${maxJog} jogadores · até 4 goleiros · ${g.memberIds.length} membros</div>
-                ${proxima ? `<div class="meta" style="color:var(--gold);">📅 Próxima pelada: ${fmtDate(proxima.date)} ${proxima.time}</div>` : ''}
+          if(!sou){
+            return `
+            <div class="card">
+              <div class="row" style="align-items:flex-start;">
+                <div style="flex:1;">
+                  <div style="font-family:'Bebas Neue';font-size:19px;">${g.name}</div>
+                  <div class="meta">${g.tipo} · ${g.diaPadrao} ${g.horarioPadrao} · 📍 ${g.local}</div>
+                  <div class="meta">até ${maxJog} jogadores · até 4 goleiros · ${g.memberIds.length} membros</div>
+                </div>
+                <button class="btn btn-gold btn-sm" data-join-group="${g.id}">Entrar</button>
               </div>
-              ${sou ? '' : `<button class="btn btn-gold btn-sm" data-join-group="${g.id}">Entrar</button>`}
+            </div>`;
+          }
+          return `
+            <div class="row" style="align-items:flex-start;margin-bottom:2px;">
+              <div style="flex:1;">
+                <div style="font-family:'Bebas Neue';font-size:19px;">${g.name}</div>
+                <div class="meta">${g.tipo} · ${g.diaPadrao} ${g.horarioPadrao} · 📍 ${g.local} · ${g.memberIds.length} membros</div>
+              </div>
+              ${souAdmin ? `<button class="btn btn-ghost btn-sm" data-action="abrir-menu-grupo" data-gid="${g.id}" style="padding:6px 12px;">⋮</button>` : ''}
             </div>
-          </div>`;
-          const cardsTorneios = sou ? torneiosDoFut(g).map(t=>`
-          <div class="card" data-action="abrir-torneio-fut-direto" data-gid="${g.id}" data-tid="${t.id}" style="cursor:pointer;">
-            <div class="row">
-              <div><div style="font-family:'Bebas Neue';font-size:19px;">🏆 ${t.nome}</div>
-                <div class="meta">${t.modalidade} · ${t.numTimes} times · ${STATUS_TORNEIO_LABEL[t.status]||t.status}</div></div>
-            </div>
-          </div>`).join('') : '';
-          return cardGrupo + cardsTorneios;
+            ${renderGrupoTabFut(g)}
+          `;
         }).join('')}
+      ${ui.menuGrupoAberto ? `
+        <div class="modal-bg" data-close-menu-grupo="1"><div class="modal" onclick="event.stopPropagation()" style="padding-bottom:8px;">
+          <div class="modal-handle"></div>
+          <div class="list-row" data-action="menu-excluir-fut" style="cursor:pointer;"><div class="name" style="color:#e8917a;">🗑️ Excluir este Fut</div></div>
+        </div></div>` : ''}
     `;
   }
 
@@ -1801,13 +1828,24 @@ function traduzErroAuth(e){
       }
     });
     semTimes.forEach(m=> itens.push({ date: m.date, html: cardMatch(m) }));
+    torneiosDoFut(g).forEach(t=>{
+      const minimo = minimoJogadoresTorneio(t);
+      let infoLine;
+      if(t.status==='confirmacao') infoLine = `${t.confirmados.length}/${minimo} confirmados · prazo ${fmtDate(t.prazoConfirmacaoData)} ${t.prazoConfirmacaoHora}`;
+      else if(t.status==='montagem_manual') infoLine = 'Montando os times';
+      else if(t.status==='finalizado'){ const campeao = t.times.find(x=>x.id===t.campeaoTimeId); infoLine = campeao ? `🏆 Campeão: ${campeao.nome}` : 'Torneio encerrado'; }
+      else infoLine = `${t.numTimes} times · ${STATUS_TORNEIO_LABEL[t.status]||t.status}`;
+      itens.push({ date: t.dataInicio || '0000-00-00', html: `
+      <div class="card tight" data-action="abrir-torneio-fut-direto" data-gid="${g.id}" data-tid="${t.id}" style="cursor:pointer;">
+        <div class="row">
+          <div><div style="font-weight:800;">🏆 ${t.nome}</div><div class="meta">${t.modalidade} · ${infoLine}</div></div>
+        </div>
+      </div>` });
+    });
     itens.sort((a,b)=> a.date.localeCompare(b.date));
     return `
       <p class="lead" style="margin-bottom:14px;">💰 A cobrança da associação é mensal (mensalidade dos sócios) — não é cobrada por partida.</p>
-      <div class="row" style="margin-bottom:6px;align-items:center;">
-        <div class="eyebrow" style="margin:0;">Partidas</div>
-        ${souAdmin ? `<button class="btn btn-gold btn-sm" data-action="marcar-fut" data-gid="${g.id}">📅 MARCAR FUT</button>` : ''}
-      </div>
+      <div class="eyebrow" style="margin-bottom:6px;">Partidas</div>
       ${itens.length===0 ? `<p class="lead">Nenhuma partida marcada.</p>` : itens.map(i=>i.html).join('')}
     `;
   }
@@ -3584,12 +3622,10 @@ function traduzErroAuth(e){
     // Voltar tem que espelhar por onde a pessoa entrou: se veio direto da lista de Fut ou do Lobby
     // (atalho pra próxima pelada, pulando a tela do Fut), voltar tem que pular essa tela também —
     // senão aparece um "Fut" no meio do caminho que a pessoa nunca visitou de propósito.
-    const origemPartida = ui.matchOrigemView || 'grupo-detalhe';
-    const botaoVoltar = origemPartida==='grupos'
-      ? `<button class="btn btn-ghost btn-sm" data-nav="grupos" style="margin-bottom:12px;">← Fut</button>`
-      : origemPartida==='home'
+    const origemPartida = ui.matchOrigemView || 'grupos';
+    const botaoVoltar = origemPartida==='home'
       ? `<button class="btn btn-ghost btn-sm" data-nav="home" style="margin-bottom:12px;">← Início</button>`
-      : `<button class="btn btn-ghost btn-sm" data-open-group="${g.id}" style="margin-bottom:12px;">← ${g.name}</button>`;
+      : `<button class="btn btn-ghost btn-sm" data-nav="grupos" style="margin-bottom:12px;">← Fut</button>`;
     // Na tela de Ao Vivo a prioridade é caber placar + tempo + jogadores + botões numa tela só,
     // então some com data/hora/local (já sabidos de antemão) e encolhe o seletor de estágio.
     const subAtual = ui.matchSubTab || subEstagioPadrao(m);
@@ -5650,7 +5686,7 @@ function traduzErroAuth(e){
     data.matches.push(m2);
 
     await saveData();
-    ui.groupId = g.id; ui.matchId = m2.id; ui.matchOrigemView = 'grupo-detalhe'; view = 'partida-detalhe'; ui.matchTab = 'partida'; ui.matchSubTab = 'acoes';
+    ui.groupId = g.id; ui.matchId = m2.id; ui.matchOrigemView = 'grupos'; view = 'partida-detalhe'; ui.matchTab = 'partida'; ui.matchSubTab = 'acoes';
     showToast(`Demonstração criada! ${m2.confirmed.length-convidados.length} mensalistas confirmaram, ${talvez.length} de talvez, ${declinam.length} não vão — e ${convidados.length} convidados completaram os ${m2.confirmed.length} jogadores (4 goleiros, 4 times prontos).`);
     render();
   }
@@ -5789,13 +5825,12 @@ function traduzErroAuth(e){
       ui.groupId = el.dataset.gid; ui.torneioId = el.dataset.tid; ui.torneioSub=null; ui.montagemSelecionado=null;
       view='torneio-detalhe'; render();
     });
-    const abrirMenuGrupoBtn = document.querySelector('[data-action="abrir-menu-grupo"]');
-    if(abrirMenuGrupoBtn) abrirMenuGrupoBtn.onclick = ()=>{ ui.menuGrupoAberto=true; render(); };
+    document.querySelectorAll('[data-action="abrir-menu-grupo"]').forEach(el=> el.onclick = ()=>{ ui.menuGrupoAberto = el.dataset.gid || true; render(); });
     document.querySelectorAll('[data-close-menu-grupo]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.menuGrupoAberto=false; render(); } });
     const menuExcluirFutBtn = document.querySelector('[data-action="menu-excluir-fut"]');
     if(menuExcluirFutBtn) menuExcluirFutBtn.onclick = ()=>{
       if(!souAdminAssoc()) return;
-      const g = groupById(ui.groupId); if(!g) return;
+      const g = groupById(typeof ui.menuGrupoAberto==='string' ? ui.menuGrupoAberto : ui.groupId); if(!g) return;
       ui.menuGrupoAberto=false;
       const numMatches = data.matches.filter(m=>m.groupId===g.id).length;
       abrirConfirmacao('🗑️ Excluir este Fut?',
@@ -6737,7 +6772,7 @@ function traduzErroAuth(e){
       logAtividade(g, 'desmarcou a pelada de '+fmtDate(m.date), { tipo:'desmarcou-pelada', matchSnapshot: empacotarTimesMatch(m) });
       data.matches = data.matches.filter(mm=>mm.id!==m.id);
       ui.modal=null; ui.matchId=null;
-      await saveData(); showToast('Pelada desmarcada.'); view='grupo-detalhe'; render();
+      await saveData(); showToast('Pelada desmarcada.'); view='grupos'; render();
     };
 
     // ---- Adicionar convidado ----
