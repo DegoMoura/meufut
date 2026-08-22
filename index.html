@@ -33,7 +33,7 @@
   /* ---------- header ---------- */
   header{position:sticky; top:0; z-index:20; backdrop-filter:blur(10px); background:rgba(15,36,25,.72); border-bottom:1px solid var(--line);}
   .headrow{display:flex; align-items:center; justify-content:space-between; padding:16px 24px;}
-  .brand{font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:.5px; display:flex; align-items:center; gap:8px;}
+  .brand{font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:.5px; display:flex; align-items:center; gap:8px; text-decoration:none; cursor:pointer;}
   .brand .gold{color:var(--gold);}
   nav{display:flex; gap:28px; font-size:13.5px; font-weight:600; color:var(--ink-dim);}
   nav a{text-decoration:none; transition:color .15s;}
@@ -170,7 +170,7 @@
 
 <header>
   <div class="headrow wrap" style="padding-left:0;padding-right:0;">
-    <div class="brand"><svg viewBox="0 0 512 512" width="22" height="22" style="display:block"><circle cx="256" cy="256" r="248" fill="#0f2419"/><circle cx="256" cy="256" r="234" fill="none" stroke="#e4b94c" stroke-width="13"/><circle cx="256" cy="256" r="204" fill="none" stroke="#e4b94c" stroke-width="2" opacity="0.5"/><path d="M160,354 L160,160 L256,264 L352,160 L352,354" fill="none" stroke="#e4b94c" stroke-width="42" stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="4"/><circle cx="256" cy="286" r="35" fill="#0f2419"/><circle cx="256" cy="286" r="35" fill="none" stroke="#e4b94c" stroke-width="7"/></svg>MEU<span class="gold">FUT</span></div>
+    <a class="brand" href="#" aria-label="Voltar ao início"><svg viewBox="0 0 512 512" width="22" height="22" style="display:block"><circle cx="256" cy="256" r="248" fill="#0f2419"/><circle cx="256" cy="256" r="234" fill="none" stroke="#e4b94c" stroke-width="13"/><circle cx="256" cy="256" r="204" fill="none" stroke="#e4b94c" stroke-width="2" opacity="0.5"/><path d="M160,354 L160,160 L256,264 L352,160 L352,354" fill="none" stroke="#e4b94c" stroke-width="42" stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="4"/><circle cx="256" cy="286" r="35" fill="#0f2419"/><circle cx="256" cy="286" r="35" fill="none" stroke="#e4b94c" stroke-width="7"/></svg>MEU<span class="gold">FUT</span></a>
     <nav>
       <a href="#baixar">Baixar o app</a>
       <a href="#funcionalidades">Funcionalidades</a>
@@ -400,7 +400,8 @@
   var NOMES = ['Lucas','Gabriel','Rafael','Bruno','João','Pedro','Matheus','Diego','Vinícius','Thiago','Igor','André',
     'Felipe','Rodrigo','Marcos','Daniel','Gustavo','Leonardo','Fernando','Ricardo','Eduardo','Carlos','Paulo','Marcelo',
     'Alexandre','Renato','Fábio','Vitor','Caio','Henrique','Guilherme','Murilo'];
-  var POS_LINHA = ['FIX','ALA','MEI','PIV'];
+  // Ordem fixa das posições de linha (Society): Fixo, Ala, Meia, Pivô — igual à ordem do app.
+  var POS_LINHA = ['FIX','FIX','ALA','ALA','MEI','MEI','PIV'];
   var TIMES = ['ouro','creme','verde','terra'];
   function embaralhar(arr){
     var a = arr.slice();
@@ -427,7 +428,7 @@
     linha.forEach(function(nome, i){
       var row = document.createElement('div');
       row.className = 'jogador-row';
-      var pos = POS_LINHA[i % POS_LINHA.length];
+      var pos = POS_LINHA[i];
       row.innerHTML = '<span class="pos">'+pos+'</span><span>'+nome+'</span>';
       col.appendChild(row);
       setTimeout(function(){ row.classList.add('mostrar'); }, 60*(i+1));
