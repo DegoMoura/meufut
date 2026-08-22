@@ -3403,7 +3403,10 @@ function traduzErroAuth(e){
     }
 
     return `
-      <button class="btn btn-ghost btn-sm" data-goto="torneios-fut" style="margin-bottom:12px;">← Torneios</button>
+      <div class="row" style="align-items:flex-start;">
+        <button class="btn btn-ghost btn-sm" data-goto="torneios-fut" style="margin-bottom:12px;">← Torneios</button>
+        ${souAdmin ? `<button class="btn btn-ghost btn-sm" data-action="torneio-excluir" data-tid="${torneio.id}" style="padding:6px 12px;">🗑️</button>` : ''}
+      </div>
       <h1 class="page-title">🏆 ${torneio.nome}</h1>
       <p class="lead">${torneio.modalidade} · ${torneio.numTimes} times · ${STATUS_TORNEIO_LABEL[torneio.status]||torneio.status}</p>
       ${torneio.status==='finalizado' && torneio.campeaoTimeId ? `<div class="card" style="text-align:center;margin-bottom:14px;"><div style="font-size:28px;">🏆</div><div style="font-weight:800;font-size:18px;">${(torneio.times.find(t=>t.id===torneio.campeaoTimeId)||{}).nome||''}</div><div class="meta">Campeão</div></div>` : ''}
@@ -5765,6 +5768,22 @@ function traduzErroAuth(e){
       await saveData(); showToast('Times montados e tabela gerada!'); render();
     });
     document.querySelectorAll('[data-torneio-sub]').forEach(el=> el.onclick = ()=>{ ui.torneioSub = el.dataset.torneioSub; render(); });
+    document.querySelectorAll('[data-action="torneio-excluir"]').forEach(el=> el.onclick = ()=>{
+      if(!souAdminAssoc()) return;
+      const g = groupById(ui.groupId); const torneio = g && torneioById(g, el.dataset.tid);
+      if(!g || !torneio) return;
+      abrirConfirmacao('🗑️ Excluir este torneio?',
+        `Isso apaga "${torneio.nome}" e todas as partidas geradas por ele permanentemente. Não dá pra reverter.`,
+        async ()=>{
+          const matchIds = new Set();
+          (torneio.fases||[]).forEach(f=> f.rodadas.forEach(r=> r.confrontos.forEach(c=>{ if(c.matchId) matchIds.add(c.matchId); })));
+          if(matchIds.size) data.matches = data.matches.filter(m=>!matchIds.has(m.id));
+          g.torneios = torneiosDoFut(g).filter(t=>t.id!==torneio.id);
+          ui.torneioId = null; ui.torneioSub = null;
+          view = 'torneios-fut';
+          await saveData(); showToast('Torneio excluído.'); render();
+        }, 'Sim, excluir');
+    });
     const abrirMenuGrupoBtn = document.querySelector('[data-action="abrir-menu-grupo"]');
     if(abrirMenuGrupoBtn) abrirMenuGrupoBtn.onclick = ()=>{ ui.menuGrupoAberto=true; render(); };
     document.querySelectorAll('[data-close-menu-grupo]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.menuGrupoAberto=false; render(); } });
