@@ -1724,7 +1724,8 @@ function traduzErroAuth(e){
     return `
       <h1 class="page-title">Fut</h1>
       <p class="lead">Cada Fut é uma turma fixa de pelada dentro da associação.</p>
-      ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:16px;" data-action="marcar-fut-lista">📅 MARCAR FUT</button>` : ''}
+      ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:10px;" data-action="marcar-fut-lista">📅 MARCAR FUT</button>` : ''}
+      ${souAdmin ? `<button class="btn btn-ghost btn-block" style="margin-bottom:16px;" data-action="criar-torneio-lista">🏆 Criar torneio</button>` : ''}
       ${grupos.length===0 ? `<div class="empty"><span class="ball">👥</span>Nenhum Fut criado ainda.</div>` :
         grupos.map(g=>{
           const sou = g.memberIds.includes(me);
@@ -6276,6 +6277,16 @@ function traduzErroAuth(e){
       ui.marcarFutGroupId = fut.id;
       ui.draftMarcarFut = null;
       ui.modal = 'marcar-fut';
+      render();
+    };
+    const criarTorneioListaBtn = document.querySelector('[data-action="criar-torneio-lista"]');
+    if(criarTorneioListaBtn) criarTorneioListaBtn.onclick = async ()=>{
+      if(!souAdminAssoc()) return;
+      const fut = obterOuCriarFutPadrao();
+      await saveData();
+      ui.groupId = fut.id;
+      ui.draftTorneio = draftTorneioPadrao(fut);
+      view = 'torneio-criar';
       render();
     };
 
