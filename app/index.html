@@ -1739,7 +1739,7 @@ function traduzErroAuth(e){
                 <div class="meta">até ${maxJog} jogadores · até 4 goleiros · ${g.memberIds.length} membros</div>
                 ${proxima ? `<div class="meta" style="color:var(--gold);">📅 Próxima pelada: ${fmtDate(proxima.date)} ${proxima.time}</div>` : ''}
               </div>
-              ${sou ? '' : `<button class="btn btn-gold btn-sm" data-join-group="${g.id}">Entrar</button>`}
+              ${sou ? `<button class="btn btn-ghost btn-sm" data-action="abrir-torneios-fut" data-gid="${g.id}" title="Torneios" style="padding:6px 10px;">🏆</button>` : `<button class="btn btn-gold btn-sm" data-join-group="${g.id}">Entrar</button>`}
             </div>
           </div>`;
         }).join('')}
@@ -5665,7 +5665,7 @@ function traduzErroAuth(e){
     document.querySelectorAll('[data-open-group]').forEach(el=> el.onclick = ()=>{ ui.groupId = el.dataset.openGroup; view='grupo-detalhe'; render(); });
 
     // ---- Torneios ----
-    document.querySelectorAll('[data-action="abrir-torneios-fut"]').forEach(el=> el.onclick = ()=>{ view='torneios-fut'; render(); });
+    document.querySelectorAll('[data-action="abrir-torneios-fut"]').forEach(el=> el.onclick = ()=>{ if(el.dataset.gid) ui.groupId = el.dataset.gid; view='torneios-fut'; render(); });
     document.querySelectorAll('[data-action="abrir-criar-torneio"]').forEach(el=> el.onclick = ()=>{
       const g = groupById(ui.groupId); if(!g) return;
       ui.draftTorneio = draftTorneioPadrao(g); view='torneio-criar'; render();
