@@ -5694,7 +5694,7 @@ function traduzErroAuth(e){
      ['tn-duracao','duracaoMin',true],['tn-intervalo','intervaloMin',true],['tn-data-inicio','dataInicio',false]
     ].forEach(([id,campo,numero])=>{
       const elCampo = document.getElementById(id);
-      if(elCampo) elCampo.onchange = e=>{ if(ui.draftTorneio) ui.draftTorneio[campo] = numero ? (parseInt(e.target.value)||0) : e.target.value; };
+      if(elCampo) elCampo.onchange = e=>{ if(!ui.draftTorneio) return; ui.draftTorneio[campo] = numero ? (parseInt(e.target.value)||0) : e.target.value; if(campo==='jogadoresLinha'||campo==='numTimes') render(); };
     });
     const salvarTorneioBtn = document.querySelector('[data-action="salvar-torneio"]');
     if(salvarTorneioBtn) salvarTorneioBtn.onclick = async ()=>{
