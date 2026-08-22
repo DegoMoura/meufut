@@ -119,7 +119,7 @@ function traduzErroAuth(e){
 
   // ---------- Foto de perfil ----------
   // Recorta em quadrado, redimensiona e comprime no próprio aparelho antes de salvar —
-  // os dados do app inteiro vivem num único documento no Firestore, então a foto tem que ser pequena (poucos KB).
+  // cada documento do Firestore tem limite de tamanho, então a foto tem que ser pequena (poucos KB).
   function redimensionarFotoPerfil(file){
     return new Promise((resolve, reject)=>{
       const reader = new FileReader();
@@ -680,9 +680,10 @@ function traduzErroAuth(e){
     const groupIds = data.groups.filter(g=>g.associacaoId===assocId).map(g=>g.id);
     const matchesJogadas = data.matches.filter(m => groupIds.includes(m.groupId) && m.status==='finalizada' && m.times &&
       (jogadoresDoTime(m,'A').includes(playerId) || jogadoresDoTime(m,'B').includes(playerId)));
-    let gols=0, amarelo=0, vermelho=0, azul=0, vitorias=0, derrotas=0, empates=0;
+    let gols=0, assistencias=0, amarelo=0, vermelho=0, azul=0, vitorias=0, derrotas=0, empates=0;
     matchesJogadas.forEach(m=>{
       gols += (m.golsPorJogador[playerId]||0);
+      assistencias += (m.statsJogo && m.statsJogo[playerId] && m.statsJogo[playerId].assistencia) || 0;
       const c = (m.cartoes && m.cartoes[playerId]) || {};
       amarelo += c.amarelo||0; vermelho += c.vermelho||0; azul += c.azul||0;
       const vencedor = m.placar.A>m.placar.B ? 'A' : (m.placar.B>m.placar.A ? 'B' : 'empate');
@@ -693,7 +694,7 @@ function traduzErroAuth(e){
     data.matches.filter(m=>groupIds.includes(m.groupId) && m.avaliacoesFeitas).forEach(m=>{
       notas.push(...notasValidas(m, playerId));
     });
-    return { jogos: matchesJogadas.length, gols, assistencias:0, amarelo, vermelho, azul, vitorias, derrotas, empates,
+    return { jogos: matchesJogadas.length, gols, assistencias, amarelo, vermelho, azul, vitorias, derrotas, empates,
       notaGeral: notas.length ? notas.reduce((a,b)=>a+b,0)/notas.length : null };
   }
 
@@ -1585,6 +1586,9 @@ function traduzErroAuth(e){
       case 'home': return renderHome();
       case 'grupos': return renderGrupos();
       case 'grupo-detalhe': return renderGrupoDetalhe();
+      case 'torneios-fut': return renderTorneiosFut();
+      case 'torneio-criar': return renderTorneioCriar();
+      case 'torneio-detalhe': return renderTorneioDetalhe();
       case 'financeiro': return renderFinanceiro();
       case 'partida-detalhe': return renderPartidaDetalhe();
       case 'fut-dia-resumo': return renderFutDiaResumo();
@@ -1789,8 +1793,16 @@ function traduzErroAuth(e){
     });
     semTimes.forEach(m=> itens.push({ date: m.date, html: cardMatch(m) }));
     itens.sort((a,b)=> a.date.localeCompare(b.date));
+    const torneiosAbertos = torneiosDoFut(g).filter(t=>t.status!=='finalizado');
     return `
       <p class="lead" style="margin-bottom:14px;">💰 A cobrança da associação é mensal (mensalidade dos sócios) — não é cobrada por partida.</p>
+      <div class="card tight" data-action="abrir-torneios-fut" data-gid="${g.id}" style="cursor:pointer;margin-bottom:16px;">
+        <div class="row">
+          <div><div style="font-weight:800;">🏆 Torneios</div>
+            <div class="meta">${torneiosAbertos.length ? torneiosAbertos.length+' em andamento' : (torneiosDoFut(g).length ? 'Ver histórico' : 'Nenhum torneio criado ainda')}</div></div>
+          <div class="meta">›</div>
+        </div>
+      </div>
       <div class="row" style="margin-bottom:6px;align-items:center;">
         <div class="eyebrow" style="margin:0;">Partidas</div>
         ${souAdmin ? `<button class="btn btn-gold btn-sm" data-action="marcar-fut" data-gid="${g.id}">📅 MARCAR FUT</button>` : ''}
@@ -2825,6 +2837,580 @@ function traduzErroAuth(e){
     times.forEach(t=> t.sort((x,y)=> ordemPos.indexOf(matchPos(m,playerById(x))) - ordemPos.indexOf(matchPos(m,playerById(y)))));
     return { times, reservas: poolRestante.slice(idx).map(p=>p.id) };
   }
+
+  // ===================== TORNEIOS =====================
+  // Um torneio vive dentro de um Fut (g.torneios): times fixos do início ao fim (diferente do sorteio
+  // avulso de cada pelada normal), que se enfrentam em várias partidas geradas automaticamente. Cada
+  // partida do torneio reaproveita 100% a estrutura de partida normal (Ao Vivo, gols, cartões,
+  // avaliações) — só ganha metadados extras (torneioId/faseId/rodada) pra agregação.
+  const FORMACAO_PADRAO_POR_MODALIDADE = { Society: 7, Futsal: 4, Campo: 10 };
+  function formacaoPadraoPara(modalidade){ return FORMACAO_PADRAO_POR_MODALIDADE[modalidade] || 7; }
+  function torneiosDoFut(g){ return g.torneios || (g.torneios = []); }
+  function torneioById(g, id){ return torneiosDoFut(g).find(t=>t.id===id); }
+  function tamanhoTimeTorneio(torneio){ return (torneio.jogadoresLinha||formacaoPadraoPara(torneio.modalidade)) + 1; }
+  function minimoJogadoresTorneio(torneio){ return torneio.numTimes * tamanhoTimeTorneio(torneio); }
+
+  // Monta os N times do torneio equilibrados por posição e nota — mesma lógica do sorteio normal,
+  // só que preenche TODOS os times de uma vez (não só os 2 que entram em quadra), já que num
+  // torneio todo mundo joga desde o início. Quem sobra além do necessário vira reserva.
+  function sortearTimesTorneio(confirmadosIds, torneio){
+    const modalidade = torneio.modalidade;
+    const ordemPos = posicoesParaCampo(modalidade);
+    const tamanho = tamanhoTimeTorneio(torneio);
+    const numTimes = torneio.numTimes;
+    const jogadores = confirmadosIds.map(playerById).filter(Boolean);
+    const notaFn = p => estrelasPara(p, modalidade, posicaoPrincipalPara(p, modalidade));
+
+    let goleiros = jogadores.filter(p=> posicaoPrincipalPara(p, modalidade)==='Goleiro').sort((a,b)=> notaFn(b)-notaFn(a));
+    let linha = jogadores.filter(p=> posicaoPrincipalPara(p, modalidade)!=='Goleiro');
+    while(goleiros.length < numTimes && linha.length){
+      linha.sort((a,b)=> estrelasPara(b,modalidade,'Goleiro') - estrelasPara(a,modalidade,'Goleiro'));
+      goleiros.push(linha.shift());
+    }
+    const golsExtras = goleiros.slice(numTimes).sort((a,b)=> notaFn(b)-notaFn(a));
+    goleiros = goleiros.slice(0, numTimes);
+
+    linha.sort((a,b)=>{
+      const pa = ordemPos.indexOf(posicaoPrincipalPara(a,modalidade)), pb = ordemPos.indexOf(posicaoPrincipalPara(b,modalidade));
+      if(pa!==pb) return pa-pb;
+      return notaFn(b)-notaFn(a);
+    });
+    const poolLinha = [...linha, ...golsExtras];
+
+    const timesIds = goleiros.map(gk=>[gk.id]);
+    let idx=0, timeAtual=0, sentido=1;
+    while(idx<poolLinha.length && timesIds.some(t=>t.length<tamanho)){
+      if(timesIds[timeAtual].length < tamanho){ timesIds[timeAtual].push(poolLinha[idx].id); idx++; }
+      timeAtual += sentido;
+      if(timeAtual>=numTimes){ timeAtual=numTimes-1; sentido=-1; }
+      else if(timeAtual<0){ timeAtual=0; sentido=1; }
+    }
+    timesIds.forEach(t=> t.sort((x,y)=> ordemPos.indexOf(posicaoPrincipalPara(playerById(x),modalidade)) - ordemPos.indexOf(posicaoPrincipalPara(playerById(y),modalidade))));
+    return { timesIds, reservas: poolLinha.slice(idx).map(p=>p.id) };
+  }
+
+  // ---- Geração de confrontos ----
+  // Pontos corridos: método do círculo — cada time joga contra todos os outros uma vez, distribuído
+  // em rodadas onde ninguém joga duas vezes. Nº ímpar de times: um fica de folga (bye) por rodada.
+  function gerarRodadasPontosCorridos(timeIds){
+    const arr = [...timeIds];
+    if(arr.length % 2 !== 0) arr.push(null);
+    const n = arr.length;
+    const rodadas = [];
+    for(let r=0; r<n-1; r++){
+      const confrontos = [];
+      for(let i=0;i<n/2;i++){
+        const a = arr[i], b = arr[n-1-i];
+        if(a!=null && b!=null) confrontos.push({ timeAId:a, timeBId:b });
+      }
+      rodadas.push(confrontos);
+      const fixo = arr[0];
+      const resto = arr.slice(1);
+      resto.unshift(resto.pop());
+      arr.splice(0, arr.length, fixo, ...resto);
+    }
+    return rodadas;
+  }
+  // Eliminatórias: monta a primeira rodada do mata-mata. Se o nº de times não for potência de 2, os
+  // primeiros da lista (os melhores, se vier de uma classificação) recebem bye — passam direto pra
+  // próxima rodada sem jogar.
+  function gerarPrimeiraRodadaEliminatorias(timeIds){
+    let tamanhoChave = 1;
+    while(tamanhoChave < timeIds.length) tamanhoChave *= 2;
+    const numByes = tamanhoChave - timeIds.length;
+    const comBye = timeIds.slice(0, numByes).map(id=>({ timeAId:id, timeBId:null, vencedorId:id }));
+    const semBye = timeIds.slice(numByes);
+    const confrontos = [];
+    for(let i=0;i<semBye.length;i+=2){
+      confrontos.push({ timeAId: semBye[i], timeBId: semBye[i+1]||null, vencedorId: semBye[i+1] ? null : semBye[i] });
+    }
+    return [...comBye, ...confrontos];
+  }
+  // Depois que todos os confrontos de uma rodada de eliminatórias têm vencedor definido, monta a
+  // próxima rodada emparelhando os vencedores na ordem. Retorna null se a rodada ainda não terminou
+  // ou se já era a final (só sobrou 1 vencedor).
+  function gerarProximaRodadaEliminatorias(rodadaAtual){
+    if(rodadaAtual.some(c=>!c.vencedorId)) return null;
+    const vencedores = rodadaAtual.map(c=>c.vencedorId);
+    if(vencedores.length <= 1) return null;
+    const proxima = [];
+    for(let i=0;i<vencedores.length;i+=2){
+      proxima.push({ timeAId: vencedores[i], timeBId: vencedores[i+1]||null, vencedorId: vencedores[i+1] ? null : vencedores[i] });
+    }
+    return proxima;
+  }
+
+  // ---- Agenda automática ----
+  // Distribui N partidas em sessões (datas) a partir de uma data de início, usando os dias da semana,
+  // quantos jogos cabem por sessão, duração de cada jogo e intervalo entre eles — pra caber peladas
+  // curtas dentro do horário normal da associação (ex: 4 jogos de 10min numa sessão de 1h30).
+  function addDias(dataIso, n){
+    const d = new Date(dataIso+'T00:00:00'); d.setDate(d.getDate()+n);
+    return d.toISOString().slice(0,10);
+  }
+  function somarMinutos(horaIso, min){
+    const [h,mn] = horaIso.split(':').map(Number);
+    const total = h*60+mn+min;
+    const hh = Math.floor((total/60))%24, mm = total%60;
+    return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  }
+  function proximaDataEntreDiasApartirDe(dataIso, diasSemana){
+    const nomesDias = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+    const alvo = diasSemana.map(d=>nomesDias.indexOf(d)).filter(i=>i>=0);
+    if(!alvo.length) return dataIso;
+    const base = new Date(dataIso+'T00:00:00');
+    for(let i=0;i<14;i++){
+      const d = new Date(base); d.setDate(base.getDate()+i);
+      if(alvo.includes(d.getDay())) return d.toISOString().slice(0,10);
+    }
+    return dataIso;
+  }
+  function calcularAgendaTorneio(dataInicio, horaInicioSessao, agenda, totalPartidas){
+    const jogosPorDia = Math.max(1, agenda.jogosPorDia||1);
+    const diasSemana = (agenda.diasSemana && agenda.diasSemana.length) ? agenda.diasSemana : [];
+    const duracaoMin = Math.max(1, agenda.duracaoMin||10);
+    const intervaloMin = Math.max(0, agenda.intervaloMin||0);
+    const slots = [];
+    if(totalPartidas===0) return { slots, dataFim: dataInicio };
+    let dataAtual = diasSemana.length ? proximaDataEntreDiasApartirDe(dataInicio, diasSemana) : dataInicio;
+    let restantes = totalPartidas;
+    while(restantes>0){
+      const nessaSessao = Math.min(jogosPorDia, restantes);
+      for(let i=0;i<nessaSessao;i++){
+        const minutosOffset = i*(duracaoMin+intervaloMin);
+        slots.push({ date: dataAtual, time: somarMinutos(horaInicioSessao, minutosOffset) });
+      }
+      restantes -= nessaSessao;
+      if(restantes>0){
+        dataAtual = diasSemana.length ? proximaDataEntreDiasApartirDe(addDias(dataAtual,1), diasSemana) : addDias(dataAtual,7);
+      }
+    }
+    return { slots, dataFim: slots[slots.length-1].date };
+  }
+
+  // ---- Criação de partidas do torneio ----
+  function criarPartidaTorneio(g, torneio, fase, rodadaNumero, confronto, slot){
+    const timeA = torneio.times.find(t=>t.id===confronto.timeAId);
+    const timeB = torneio.times.find(t=>t.id===confronto.timeBId);
+    if(!timeA || !timeB || !slot) return null; // bye: não gera partida
+    const m = {
+      id: uid(), groupId: g.id, date: slot.date, time: slot.time, horaTermino: somarMinutos(slot.time, torneio.agenda.duracaoMin),
+      local: g.local, valor: 0,
+      torneioId: torneio.id, faseId: fase.id, rodadaNumero, timeIdA: timeA.id, timeIdB: timeB.id,
+      times: [ [...timeA.jogadores], [...timeB.jogadores] ], timeA: 0, timeB: 1,
+      maxJogadores: timeA.jogadores.length + timeB.jogadores.length, maxGoleiros: 2,
+      confirmed: [...timeA.jogadores, ...timeB.jogadores], maybe:[], declined:[], waitlist:[], status:'aberta',
+      positionByPlayer:{}, filaIdx:[],
+      confirmInicioData: slot.date, confirmInicioHora: '00:00', confirmFimData: slot.date, confirmFimHora: slot.time,
+      chegadas:{}, statsJogo:{}, timer:{rodando:false, inicioTs:null, acumuladoMs:0},
+      placar:{A:0,B:0}, golsPorJogador:{}, pagamentos:{}, cartoes:{}, avaliacoesFeitas:{}
+    };
+    data.matches.push(m);
+    return m;
+  }
+  function gerarPartidasFase(g, torneio, fase, dataInicioFase){
+    const horaInicioSessao = (associacaoAtual()||{}).horaInicio || '20:00';
+    const inicio = dataInicioFase || torneio.dataInicio;
+    if(fase.tipo==='pontos_corridos'){
+      const rodadasConfrontos = gerarRodadasPontosCorridos(fase.timesIds);
+      const totalPartidas = rodadasConfrontos.reduce((s,r)=>s+r.length,0);
+      const { slots, dataFim } = calcularAgendaTorneio(inicio, horaInicioSessao, torneio.agenda, totalPartidas);
+      let slotIdx=0;
+      fase.rodadas = rodadasConfrontos.map((confrontos, i)=>({
+        numero: i+1,
+        confrontos: confrontos.map(c=>{
+          const slot = slots[slotIdx++];
+          const m = criarPartidaTorneio(g, torneio, fase, i+1, c, slot);
+          return { ...c, matchId: m?m.id:null };
+        })
+      }));
+      fase.dataFim = dataFim;
+    } else {
+      const primeiraRodada = gerarPrimeiraRodadaEliminatorias(fase.timesIds);
+      const jogaveis = primeiraRodada.filter(c=>c.timeBId);
+      const { slots, dataFim } = calcularAgendaTorneio(inicio, horaInicioSessao, torneio.agenda, jogaveis.length);
+      let slotIdx=0;
+      fase.rodadas = [{
+        numero: 1,
+        confrontos: primeiraRodada.map(c=>{
+          if(!c.timeBId) return c; // bye, já com vencedor definido
+          const slot = slots[slotIdx++];
+          const m = criarPartidaTorneio(g, torneio, fase, 1, c, slot);
+          return { ...c, matchId: m?m.id:null };
+        })
+      }];
+      fase.dataFim = jogaveis.length ? dataFim : inicio;
+    }
+  }
+  function embaralharSimples(arr){
+    const a = [...arr];
+    for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+
+  // ---- Ciclo de vida do torneio ----
+  function criarTorneio(g, cfg){
+    const torneio = {
+      id: uid(), nome: cfg.nome, modalidade: cfg.modalidade,
+      jogadoresLinha: cfg.jogadoresLinha || formacaoPadraoPara(cfg.modalidade),
+      numTimes: cfg.numTimes,
+      prazoConfirmacaoData: cfg.prazoConfirmacaoData, prazoConfirmacaoHora: cfg.prazoConfirmacaoHora,
+      confirmados: [], recusados: [],
+      status: 'confirmacao', modoMontagem: cfg.modoMontagem||'sortear',
+      times: [], reservas: [], formato: cfg.formato, classificamHibrido: cfg.classificamHibrido||4,
+      agenda: { diasSemana: cfg.diasSemana||[], jogosPorDia: cfg.jogosPorDia||1, duracaoMin: cfg.duracaoMin||10, intervaloMin: cfg.intervaloMin||5 },
+      dataInicio: cfg.dataInicio, dataFimPrevista: null,
+      fases: [], campeaoTimeId: null,
+      criadoEm: new Date().toISOString(), criadoPor: me
+    };
+    torneiosDoFut(g).push(torneio);
+    return torneio;
+  }
+  // Monta os times (sorteio, ou o que já foi montado manualmente em torneio.times) e gera a(s) fase(s)
+  // com todos os confrontos e datas. A partir daqui o torneio está "em_andamento".
+  function iniciarTorneio(g, torneio){
+    if(torneio.modoMontagem==='sortear'){
+      const { timesIds, reservas } = sortearTimesTorneio(torneio.confirmados, torneio);
+      torneio.times = timesIds.map((jogadores,i)=>({ id: uid(), nome:`Time ${i+1}`, jogadores }));
+      torneio.reservas = reservas;
+    }
+    const todosIds = torneio.times.map(t=>t.id);
+    if(torneio.formato==='pontos_corridos'){
+      const fase = { id: uid(), nome:'Fase única', tipo:'pontos_corridos', timesIds: todosIds, rodadas:[] };
+      torneio.fases = [fase];
+      gerarPartidasFase(g, torneio, fase, torneio.dataInicio);
+      torneio.dataFimPrevista = fase.dataFim;
+    } else if(torneio.formato==='eliminatorias'){
+      const fase = { id: uid(), nome:'Eliminatórias', tipo:'eliminatorias', timesIds: embaralharSimples(todosIds), rodadas:[] };
+      torneio.fases = [fase];
+      gerarPartidasFase(g, torneio, fase, torneio.dataInicio);
+      torneio.dataFimPrevista = fase.dataFim;
+    } else { // híbrido: só gera a 1ª fase agora; a 2ª (mata-mata) é gerada sozinha quando a 1ª terminar
+      const fase1 = { id: uid(), nome:'Fase de pontos corridos', tipo:'pontos_corridos', timesIds: todosIds, rodadas:[] };
+      torneio.fases = [fase1];
+      gerarPartidasFase(g, torneio, fase1, torneio.dataInicio);
+      torneio.dataFimPrevista = fase1.dataFim;
+    }
+    torneio.status = 'em_andamento';
+  }
+  // Tabela de classificação de uma fase de pontos corridos, a partir das partidas já finalizadas.
+  function classificacaoFaseTorneio(torneio, fase){
+    const porTime = {};
+    const get = id => {
+      if(!porTime[id]){
+        const t = torneio.times.find(x=>x.id===id);
+        porTime[id] = { timeId:id, nome: t?t.nome:'?', j:0, v:0, e:0, d:0, gp:0, gc:0, pontos:0 };
+      }
+      return porTime[id];
+    };
+    fase.rodadas.forEach(r=> r.confrontos.forEach(c=>{
+      if(!c.matchId) return;
+      const m = matchById(c.matchId);
+      if(!m || m.status!=='finalizada') return;
+      const rA = get(c.timeAId), rB = get(c.timeBId);
+      rA.j++; rB.j++;
+      rA.gp += m.placar.A; rA.gc += m.placar.B;
+      rB.gp += m.placar.B; rB.gc += m.placar.A;
+      if(m.placar.A>m.placar.B){ rA.v++; rA.pontos+=3; rB.d++; }
+      else if(m.placar.B>m.placar.A){ rB.v++; rB.pontos+=3; rA.d++; }
+      else { rA.e++; rB.e++; rA.pontos++; rB.pontos++; }
+    }));
+    const confrontoDireto = (idA, idB) => {
+      let ptsA=0, ptsB=0;
+      fase.rodadas.forEach(r=> r.confrontos.forEach(c=>{
+        if(!c.matchId) return;
+        const m = matchById(c.matchId); if(!m || m.status!=='finalizada') return;
+        if(c.timeAId===idA && c.timeBId===idB){ if(m.placar.A>m.placar.B) ptsA+=3; else if(m.placar.B>m.placar.A) ptsB+=3; else { ptsA++; ptsB++; } }
+        else if(c.timeAId===idB && c.timeBId===idA){ if(m.placar.A>m.placar.B) ptsB+=3; else if(m.placar.B>m.placar.A) ptsA+=3; else { ptsA++; ptsB++; } }
+      }));
+      return ptsA-ptsB;
+    };
+    return Object.values(porTime).sort((a,b)=>
+      b.pontos-a.pontos || (b.gp-b.gc)-(a.gp-a.gc) || confrontoDireto(a.timeId,b.timeId) || b.gp-a.gp
+    );
+  }
+  // Chamado sempre que uma partida termina (encerrar pelada / fim de jogo) — se ela pertence a um
+  // torneio, avança o chaveamento (eliminatórias) ou detecta o fim de uma fase de pontos corridos pra
+  // gerar a fase seguinte (formato híbrido) ou encerrar o torneio.
+  function avancarTorneioAposPartida(m){
+    if(!m.torneioId) return;
+    const g = groupById(m.groupId);
+    const torneio = g && torneioById(g, m.torneioId);
+    if(!torneio) return;
+    const fase = torneio.fases.find(f=>f.id===m.faseId);
+    if(!fase) return;
+    const rodada = fase.rodadas.find(r=>r.numero===m.rodadaNumero);
+    const confronto = rodada && rodada.confrontos.find(c=>c.matchId===m.id);
+    if(fase.tipo==='eliminatorias'){
+      if(confronto){
+        confronto.vencedorId = m.placar.A>m.placar.B ? confronto.timeAId : (m.placar.B>m.placar.A ? confronto.timeBId : null);
+        if(!confronto.vencedorId){ showToast('Eliminatórias não podem empatar — ajuste o placar.'); return; }
+      }
+      const proxima = gerarProximaRodadaEliminatorias(rodada.confrontos);
+      if(proxima){
+        const horaInicioSessao = (associacaoAtual()||{}).horaInicio || '20:00';
+        const jogaveis = proxima.filter(c=>c.timeBId);
+        const { slots } = calcularAgendaTorneio(addDias(m.date,7), horaInicioSessao, torneio.agenda, jogaveis.length);
+        let slotIdx=0;
+        const novaRodada = { numero: rodada.numero+1, confrontos: proxima.map(c=>{
+          if(!c.timeBId) return c;
+          const slot = slots[slotIdx++];
+          const novoM = criarPartidaTorneio(g, torneio, fase, rodada.numero+1, c, slot);
+          return { ...c, matchId: novoM?novoM.id:null };
+        })};
+        fase.rodadas.push(novaRodada);
+      } else if(rodada.confrontos.length===1 && rodada.confrontos[0].vencedorId){
+        torneio.campeaoTimeId = rodada.confrontos[0].vencedorId;
+        torneio.status = 'finalizado';
+      }
+    } else {
+      // pontos corridos: só faz algo especial se TODA a fase terminou
+      const todasFinalizadas = fase.rodadas.every(r=> r.confrontos.every(c=> !c.matchId || (matchById(c.matchId)||{}).status==='finalizada'));
+      if(!todasFinalizadas) return;
+      if(torneio.formato==='hibrido' && torneio.fases.length===1){
+        const tabela = classificacaoFaseTorneio(torneio, fase);
+        const classificados = tabela.slice(0, Math.min(torneio.classificamHibrido, tabela.length)).map(r=>r.timeId);
+        const fase2 = { id: uid(), nome:'Eliminatórias', tipo:'eliminatorias', timesIds: classificados, rodadas:[] };
+        torneio.fases.push(fase2);
+        gerarPartidasFase(g, torneio, fase2, addDias(fase.dataFim, 7));
+        torneio.dataFimPrevista = fase2.dataFim;
+      } else if(torneio.formato==='pontos_corridos'){
+        torneio.status = 'finalizado';
+        const tabela = classificacaoFaseTorneio(torneio, fase);
+        if(tabela[0]) torneio.campeaoTimeId = tabela[0].timeId;
+      }
+    }
+  }
+
+  // ---- Telas de torneio ----
+  const STATUS_TORNEIO_LABEL = { confirmacao:'Confirmando presença', montagem_manual:'Montando times', em_andamento:'Em andamento', finalizado:'Finalizado' };
+  function draftTorneioPadrao(g){
+    const a = associacaoAtual();
+    const modalidade = (a && a.campoTipo) || 'Society';
+    const hoje = new Date().toISOString().slice(0,10);
+    return {
+      nome:'', modalidade, jogadoresLinha: formacaoPadraoPara(modalidade), numTimes:4,
+      prazoConfirmacaoData: hoje, prazoConfirmacaoHora:'18:00',
+      modoMontagem:'sortear', formato:'pontos_corridos', classificamHibrido:2,
+      diasSemana: (a && a.diasSemana) ? [...a.diasSemana] : [], jogosPorDia:1, duracaoMin:10, intervaloMin:5,
+      dataInicio: hoje
+    };
+  }
+  function renderTorneiosFut(){
+    const g = groupById(ui.groupId);
+    if(!g){ view='grupos'; return renderGrupos(); }
+    const souAdmin = souAdminAssoc();
+    const torneios = torneiosDoFut(g).slice().sort((a,b)=> b.criadoEm.localeCompare(a.criadoEm));
+    return `
+      <button class="btn btn-ghost btn-sm" data-open-group="${g.id}" style="margin-bottom:12px;">← ${g.name}</button>
+      <h1 class="page-title">🏆 Torneios</h1>
+      <p class="lead">Times fixos, tabela e chaveamento — separado das peladas normais do Fut.</p>
+      ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:16px;" data-action="abrir-criar-torneio">+ Criar torneio</button>` : ''}
+      ${torneios.length===0 ? `<div class="empty"><span class="ball">🏆</span>Nenhum torneio criado ainda.</div>` :
+        torneios.map(t=>`
+          <div class="card tight" data-action="abrir-torneio-detalhe" data-tid="${t.id}" style="cursor:pointer;margin-bottom:8px;">
+            <div class="row">
+              <div><div style="font-weight:800;">${t.nome}</div>
+                <div class="meta">${t.modalidade} · ${t.numTimes} times · ${STATUS_TORNEIO_LABEL[t.status]||t.status}</div></div>
+              <div class="meta">›</div>
+            </div>
+          </div>`).join('')}
+    `;
+  }
+  function renderTorneioCriar(){
+    const g = groupById(ui.groupId);
+    if(!g){ view='grupos'; return renderGrupos(); }
+    const d = ui.draftTorneio || (ui.draftTorneio = draftTorneioPadrao(g));
+    const minimo = (d.numTimes||0) * ((d.jogadoresLinha||0) + 1);
+    return `
+      <button class="btn btn-ghost btn-sm" data-goto="torneios-fut" style="margin-bottom:12px;">← Torneios</button>
+      <h1 class="page-title">Criar torneio</h1>
+
+      <label>Nome do torneio</label>
+      <input id="tn-nome" placeholder="Ex: Copa ${g.name}" value="${d.nome}">
+
+      <label style="margin-top:14px;">Modalidade</label>
+      <div class="chip-row">${CAMPO_TIPOS.map(tipo=>`<div class="chip ${d.modalidade===tipo?'active':''}" data-tn-modalidade="${tipo}">${tipo}</div>`).join('')}</div>
+
+      <div class="row" style="margin-top:14px;gap:12px;">
+        <div style="flex:1;"><label>Jogadores de linha por time</label><input id="tn-linha" type="number" min="1" value="${d.jogadoresLinha}"></div>
+        <div style="flex:1;"><label>Número de times</label><input id="tn-numtimes" type="number" min="2" value="${d.numTimes}"></div>
+      </div>
+      <p class="meta" style="margin-top:6px;">Mínimo necessário: <strong>${minimo} jogadores</strong> (${d.numTimes} times × ${d.jogadoresLinha} de linha + 1 goleiro). Pode confirmar mais gente pra ter reservas.</p>
+
+      <label style="margin-top:14px;">Prazo pra confirmar presença</label>
+      <div class="row" style="gap:12px;">
+        <input id="tn-prazo-data" type="date" value="${d.prazoConfirmacaoData}" style="flex:1;">
+        <input id="tn-prazo-hora" type="time" value="${d.prazoConfirmacaoHora}" style="flex:1;">
+      </div>
+
+      <label style="margin-top:14px;">Montagem dos times</label>
+      <div class="chip-row">
+        <div class="chip ${d.modoMontagem==='sortear'?'active':''}" data-tn-modo="sortear">🔀 Sortear automático</div>
+        <div class="chip ${d.modoMontagem==='manual'?'active':''}" data-tn-modo="manual">✋ Montar manualmente</div>
+      </div>
+
+      <label style="margin-top:14px;">Formato do campeonato</label>
+      <div class="chip-row">
+        <div class="chip ${d.formato==='pontos_corridos'?'active':''}" data-tn-formato="pontos_corridos">Pontos corridos</div>
+        <div class="chip ${d.formato==='eliminatorias'?'active':''}" data-tn-formato="eliminatorias">Eliminatórias</div>
+        <div class="chip ${d.formato==='hibrido'?'active':''}" data-tn-formato="hibrido">Pontos corridos + Eliminatórias</div>
+      </div>
+      ${d.formato==='hibrido' ? `<label style="margin-top:10px;">Quantos times avançam pro mata-mata</label><input id="tn-classificam" type="number" min="2" value="${d.classificamHibrido}">` : ''}
+
+      <div class="eyebrow" style="margin-top:18px;">Agenda das partidas</div>
+      <label>Dias da semana</label>
+      <div class="chip-row">${DIAS_SEMANA.map(dia=>`<div class="chip ${d.diasSemana.includes(dia)?'active':''}" data-tn-dia="${dia}">${dia}</div>`).join('')}</div>
+      <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:110px;"><label>Jogos por dia</label><input id="tn-jogos-dia" type="number" min="1" value="${d.jogosPorDia}"></div>
+        <div style="flex:1;min-width:110px;"><label>Min. por jogo</label><input id="tn-duracao" type="number" min="1" value="${d.duracaoMin}"></div>
+        <div style="flex:1;min-width:110px;"><label>Intervalo (min)</label><input id="tn-intervalo" type="number" min="0" value="${d.intervaloMin}"></div>
+      </div>
+      <label style="margin-top:10px;">Data de início</label>
+      <input id="tn-data-inicio" type="date" value="${d.dataInicio}">
+
+      <button class="btn btn-gold btn-block" style="margin-top:20px;" data-action="salvar-torneio">Criar torneio</button>
+    `;
+  }
+  function renderTorneioTimes(torneio){
+    const html = torneio.times.map(t=>`
+      <div class="card tight" style="margin-bottom:10px;">
+        <div style="font-weight:800;margin-bottom:6px;">${t.nome}</div>
+        ${t.jogadores.map(pid=>{ const pl=playerById(pid); return pl?`<div class="list-row"><div class="name">${pl.name}</div><div class="meta">${posicaoPrincipalPara(pl,torneio.modalidade)}</div></div>`:''; }).join('') || '<p class="meta">Vazio</p>'}
+      </div>`).join('');
+    const reservasHtml = (torneio.reservas && torneio.reservas.length) ? `
+      <div class="card tight"><div class="eyebrow">Reservas</div>${torneio.reservas.map(pid=>{ const pl=playerById(pid); return pl?`<div class="list-row"><div class="name">${pl.name}</div></div>`:''; }).join('')}</div>` : '';
+    return html + reservasHtml;
+  }
+  function renderTorneioTabela(torneio){
+    const fases = torneio.fases.filter(f=>f.tipo==='pontos_corridos');
+    if(!fases.length) return `<div class="empty">Esse torneio é só eliminatórias — confere o chaveamento em "Jogos".</div>`;
+    return fases.map(fase=>{
+      const tabela = classificacaoFaseTorneio(torneio, fase);
+      return `
+        <div class="eyebrow">${fase.nome}</div>
+        <div class="card" style="overflow-x:auto;margin-bottom:14px;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr style="color:var(--ink-dim);text-align:left;">
+              <th style="padding:6px 4px;">Time</th><th>Pts</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th>
+            </tr></thead>
+            <tbody>
+              ${tabela.map((r,i)=>`<tr style="border-top:1px solid var(--line);">
+                <td style="padding:6px 4px;font-weight:700;">${i+1}º ${r.nome}</td>
+                <td>${r.pontos}</td><td>${r.j}</td><td>${r.v}</td><td>${r.e}</td><td>${r.d}</td><td>${r.gp}</td><td>${r.gc}</td><td>${r.gp-r.gc}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }).join('');
+  }
+  function renderTorneioJogos(torneio){
+    return torneio.fases.map(fase=>`
+      <div class="eyebrow" style="margin-top:14px;">${fase.nome}</div>
+      ${fase.rodadas.map(r=>`
+        <div class="meta" style="margin:8px 0 4px;font-weight:700;">Rodada ${r.numero}</div>
+        ${r.confrontos.map(c=>{
+          const nomeA = (torneio.times.find(t=>t.id===c.timeAId)||{}).nome||'?';
+          const nomeB = c.timeBId ? (torneio.times.find(t=>t.id===c.timeBId)||{}).nome : null;
+          if(!nomeB) return `<div class="card tight" style="margin-bottom:8px;"><div class="row"><div class="name">${nomeA}</div><div class="meta">Passou direto (bye)</div></div></div>`;
+          const m = c.matchId ? matchById(c.matchId) : null;
+          const placarTxt = m && m.status==='finalizada' ? `${m.placar.A} x ${m.placar.B}` : (m ? `${fmtDate(m.date)} · ${m.time}` : 'A definir');
+          return `<div class="card tight" ${m?`data-open-match="${m.id}"`:''} style="margin-bottom:8px;${m?'cursor:pointer;':''}">
+            <div class="row"><div class="name">${nomeA} <span style="color:var(--ink-dim);">x</span> ${nomeB}</div><div style="font-weight:700;color:var(--gold);">${placarTxt}</div></div>
+          </div>`;
+        }).join('')}`).join('')}`).join('');
+  }
+  function renderTorneioRanking(torneio){
+    const idsTodos = torneio.times.flatMap(t=>t.jogadores);
+    const stats = idsTodos.map(pid=>{
+      let gols=0, assistencias=0;
+      data.matches.filter(m=>m.torneioId===torneio.id && m.status==='finalizada').forEach(m=>{
+        gols += (m.golsPorJogador[pid]||0);
+        const sj = (m.statsJogo&&m.statsJogo[pid])||{}; assistencias += sj.assistencia||0;
+      });
+      return { pid, gols, assistencias };
+    });
+    const nome = pid => (playerById(pid)||{}).name || '?';
+    const lista = (arr,key,icon) => arr.length ? arr.map((s,i)=>`<div class="list-row"><div class="rank-num ${i===0?'g1':''}">${i+1}º</div><div style="flex:1;"><div class="name">${nome(s.pid)}</div></div><div class="meta">${icon} ${s[key]}</div></div>`).join('') : '<p class="meta">Ninguém pontuou ainda.</p>';
+    const artilharia = [...stats].sort((a,b)=>b.gols-a.gols).filter(s=>s.gols>0).slice(0,10);
+    const assist = [...stats].sort((a,b)=>b.assistencias-a.assistencias).filter(s=>s.assistencias>0).slice(0,10);
+    return `
+      <div class="eyebrow">⚽ Artilharia</div>
+      <div class="card" style="margin-bottom:14px;">${lista(artilharia,'gols','⚽')}</div>
+      <div class="eyebrow">🅰️ Assistências</div>
+      <div class="card">${lista(assist,'assistencias','🅰️')}</div>
+    `;
+  }
+  function renderTorneioMontagemManual(torneio){
+    const atribuidos = new Set(torneio.times.flatMap(t=>t.jogadores));
+    const disponiveis = torneio.confirmados.filter(pid=>!atribuidos.has(pid));
+    return `
+      <div class="card">
+        <div class="eyebrow">Jogadores disponíveis (${disponiveis.length})</div>
+        <div class="chip-row">${disponiveis.map(pid=>`<div class="chip ${ui.montagemSelecionado===pid?'active':''}" data-tn-selecionar-jogador="${pid}">${(playerById(pid)||{}).name}</div>`).join('') || '<p class="meta">Todo mundo já foi distribuído.</p>'}</div>
+      </div>
+      ${torneio.times.map((t,i)=>`
+        <div class="card tight" style="margin-top:10px;">
+          <div class="row"><div style="font-weight:800;">${t.nome}</div>
+            ${ui.montagemSelecionado ? `<button class="btn btn-gold btn-sm" data-tn-atribuir-time="${i}">Colocar aqui</button>` : ''}
+          </div>
+          ${t.jogadores.map(pid=>`<div class="list-row"><div class="name">${(playerById(pid)||{}).name}</div><div class="meta" data-tn-remover-jogador="${pid}" style="cursor:pointer;">✕</div></div>`).join('') || '<p class="meta">Vazio</p>'}
+        </div>`).join('')}
+      <button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="torneio-finalizar-montagem" data-tid="${torneio.id}">Gerar tabela e partidas</button>
+    `;
+  }
+  function renderTorneioDetalhe(){
+    const g = groupById(ui.groupId);
+    const torneio = g && torneioById(g, ui.torneioId);
+    if(!g || !torneio){ view='grupos'; return renderGrupos(); }
+    const souAdmin = souAdminAssoc();
+    const p = myPlayer();
+    const jaConfirmou = p && torneio.confirmados.includes(p.id);
+    const minimo = minimoJogadoresTorneio(torneio);
+
+    let corpo = '';
+    if(torneio.status==='confirmacao'){
+      corpo = `
+        <div class="card">
+          <div class="eyebrow">Confirmação de presença</div>
+          <p class="lead">Prazo: ${fmtDate(torneio.prazoConfirmacaoData)} às ${torneio.prazoConfirmacaoHora}</p>
+          <p class="meta">${torneio.confirmados.length}/${minimo} confirmados (mínimo)</p>
+          ${jaConfirmou
+            ? `<button class="btn btn-ghost btn-block" style="margin-top:10px;" data-action="torneio-desconfirmar" data-tid="${torneio.id}">Cancelar minha presença</button>`
+            : `<button class="btn btn-gold btn-block" style="margin-top:10px;" data-action="torneio-confirmar" data-tid="${torneio.id}">✅ Confirmar presença</button>`}
+        </div>
+        <div class="card" style="margin-top:12px;">
+          <div class="eyebrow">Confirmados (${torneio.confirmados.length})</div>
+          ${torneio.confirmados.map(pid=>{ const pl=playerById(pid); return pl?`<div class="list-row"><div class="name">${pl.name}</div></div>`:''; }).join('') || '<p class="meta">Ninguém confirmou ainda.</p>'}
+        </div>
+        ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-top:16px;" data-action="torneio-iniciar" data-tid="${torneio.id}" ${torneio.confirmados.length<minimo?'disabled':''}>${torneio.modoMontagem==='sortear' ? '🔀 Sortear times e gerar tabela' : '✋ Montar times manualmente'}</button>` : ''}
+        ${souAdmin && torneio.confirmados.length<minimo ? `<p class="meta" style="text-align:center;margin-top:8px;">Faltam ${minimo-torneio.confirmados.length} confirmados pro mínimo.</p>` : ''}
+      `;
+    } else if(torneio.status==='montagem_manual'){
+      corpo = renderTorneioMontagemManual(torneio);
+    } else {
+      const sub = ui.torneioSub || 'times';
+      const tabs = [['times','Times'],['tabela','Tabela'],['jogos','Jogos'],['ranking','Ranking']];
+      corpo = `
+        <div class="fin-tabs" style="margin-bottom:14px;">
+          ${tabs.map(([k,l])=>`<div class="fin-tab ${sub===k?'active':''}" data-torneio-sub="${k}">${l}</div>`).join('')}
+        </div>
+        ${sub==='times' ? renderTorneioTimes(torneio) : ''}
+        ${sub==='tabela' ? renderTorneioTabela(torneio) : ''}
+        ${sub==='jogos' ? renderTorneioJogos(torneio) : ''}
+        ${sub==='ranking' ? renderTorneioRanking(torneio) : ''}
+      `;
+    }
+
+    return `
+      <button class="btn btn-ghost btn-sm" data-goto="torneios-fut" style="margin-bottom:12px;">← Torneios</button>
+      <h1 class="page-title">🏆 ${torneio.nome}</h1>
+      <p class="lead">${torneio.modalidade} · ${torneio.numTimes} times · ${STATUS_TORNEIO_LABEL[torneio.status]||torneio.status}</p>
+      ${torneio.status==='finalizado' && torneio.campeaoTimeId ? `<div class="card" style="text-align:center;margin-bottom:14px;"><div style="font-size:28px;">🏆</div><div style="font-weight:800;font-size:18px;">${(torneio.times.find(t=>t.id===torneio.campeaoTimeId)||{}).nome||''}</div><div class="meta">Campeão</div></div>` : ''}
+      ${corpo}
+    `;
+  }
+
   function fmtTimer(ms){
     const total = Math.max(0, Math.floor(ms/1000));
     const mm = String(Math.floor(total/60)).padStart(2,'0');
@@ -5077,6 +5663,108 @@ function traduzErroAuth(e){
     });
     document.querySelectorAll('[data-goto]').forEach(el=> el.onclick = ()=>{ view = el.dataset.goto; render(); });
     document.querySelectorAll('[data-open-group]').forEach(el=> el.onclick = ()=>{ ui.groupId = el.dataset.openGroup; view='grupo-detalhe'; render(); });
+
+    // ---- Torneios ----
+    document.querySelectorAll('[data-action="abrir-torneios-fut"]').forEach(el=> el.onclick = ()=>{ view='torneios-fut'; render(); });
+    document.querySelectorAll('[data-action="abrir-criar-torneio"]').forEach(el=> el.onclick = ()=>{
+      const g = groupById(ui.groupId); if(!g) return;
+      ui.draftTorneio = draftTorneioPadrao(g); view='torneio-criar'; render();
+    });
+    document.querySelectorAll('[data-action="abrir-torneio-detalhe"]').forEach(el=> el.onclick = ()=>{
+      ui.torneioId = el.dataset.tid; ui.torneioSub=null; ui.montagemSelecionado=null; view='torneio-detalhe'; render();
+    });
+    document.querySelectorAll('[data-tn-modalidade]').forEach(el=> el.onclick = ()=>{
+      const d = ui.draftTorneio; if(!d) return;
+      d.modalidade = el.dataset.tnModalidade;
+      d.jogadoresLinha = formacaoPadraoPara(d.modalidade);
+      render();
+    });
+    document.querySelectorAll('[data-tn-modo]').forEach(el=> el.onclick = ()=>{ if(ui.draftTorneio){ ui.draftTorneio.modoMontagem = el.dataset.tnModo; render(); } });
+    document.querySelectorAll('[data-tn-formato]').forEach(el=> el.onclick = ()=>{ if(ui.draftTorneio){ ui.draftTorneio.formato = el.dataset.tnFormato; render(); } });
+    document.querySelectorAll('[data-tn-dia]').forEach(el=> el.onclick = ()=>{
+      const d = ui.draftTorneio; if(!d) return;
+      const dia = el.dataset.tnDia;
+      const idx = d.diasSemana.indexOf(dia);
+      if(idx===-1) d.diasSemana.push(dia); else d.diasSemana.splice(idx,1);
+      render();
+    });
+    [['tn-nome','nome',false],['tn-linha','jogadoresLinha',true],['tn-numtimes','numTimes',true],
+     ['tn-prazo-data','prazoConfirmacaoData',false],['tn-prazo-hora','prazoConfirmacaoHora',false],
+     ['tn-classificam','classificamHibrido',true],['tn-jogos-dia','jogosPorDia',true],
+     ['tn-duracao','duracaoMin',true],['tn-intervalo','intervaloMin',true],['tn-data-inicio','dataInicio',false]
+    ].forEach(([id,campo,numero])=>{
+      const elCampo = document.getElementById(id);
+      if(elCampo) elCampo.onchange = e=>{ if(ui.draftTorneio) ui.draftTorneio[campo] = numero ? (parseInt(e.target.value)||0) : e.target.value; };
+    });
+    const salvarTorneioBtn = document.querySelector('[data-action="salvar-torneio"]');
+    if(salvarTorneioBtn) salvarTorneioBtn.onclick = async ()=>{
+      const g = groupById(ui.groupId); const d = ui.draftTorneio;
+      if(!g || !d) return;
+      if(!d.nome.trim()){ showToast('Dá um nome pro torneio'); return; }
+      if(!d.numTimes || d.numTimes<2){ showToast('Pelo menos 2 times'); return; }
+      if(!d.jogadoresLinha || d.jogadoresLinha<1){ showToast('Preenche os jogadores de linha por time'); return; }
+      if(!d.diasSemana.length){ showToast('Escolhe pelo menos um dia da semana'); return; }
+      if(!d.dataInicio){ showToast('Escolhe a data de início'); return; }
+      const torneio = criarTorneio(g, d);
+      ui.draftTorneio = null; ui.torneioId = torneio.id; ui.torneioSub=null;
+      view='torneio-detalhe';
+      await saveData(); showToast('Torneio criado! Agora é só confirmar presença.'); render();
+    };
+    document.querySelectorAll('[data-action="torneio-confirmar"]').forEach(el=> el.onclick = async ()=>{
+      const g = groupById(ui.groupId); const torneio = g && torneioById(g, el.dataset.tid);
+      if(!torneio) return;
+      const p = myPlayer(); if(!p) return;
+      if(!torneio.confirmados.includes(p.id)) torneio.confirmados.push(p.id);
+      torneio.recusados = (torneio.recusados||[]).filter(id=>id!==p.id);
+      await saveData(); showToast('Presença confirmada!'); render();
+    });
+    document.querySelectorAll('[data-action="torneio-desconfirmar"]').forEach(el=> el.onclick = async ()=>{
+      const g = groupById(ui.groupId); const torneio = g && torneioById(g, el.dataset.tid);
+      if(!torneio) return;
+      const p = myPlayer(); if(!p) return;
+      torneio.confirmados = torneio.confirmados.filter(id=>id!==p.id);
+      await saveData(); render();
+    });
+    document.querySelectorAll('[data-action="torneio-iniciar"]').forEach(el=> el.onclick = async ()=>{
+      const g = groupById(ui.groupId); const torneio = g && torneioById(g, el.dataset.tid);
+      if(!g || !torneio) return;
+      if(torneio.confirmados.length < minimoJogadoresTorneio(torneio)){ showToast('Ainda falta gente confirmar'); return; }
+      if(torneio.modoMontagem==='sortear'){
+        iniciarTorneio(g, torneio);
+        await saveData(); showToast('Times sorteados e tabela gerada!'); render();
+      } else {
+        torneio.times = Array.from({length: torneio.numTimes}, (_,i)=>({ id: uid(), nome:`Time ${i+1}`, jogadores:[] }));
+        torneio.status = 'montagem_manual';
+        await saveData(); render();
+      }
+    });
+    document.querySelectorAll('[data-tn-selecionar-jogador]').forEach(el=> el.onclick = ()=>{
+      ui.montagemSelecionado = ui.montagemSelecionado===el.dataset.tnSelecionarJogador ? null : el.dataset.tnSelecionarJogador;
+      render();
+    });
+    document.querySelectorAll('[data-tn-atribuir-time]').forEach(el=> el.onclick = async ()=>{
+      const g = groupById(ui.groupId); const torneio = g && torneioById(g, ui.torneioId);
+      if(!torneio || !ui.montagemSelecionado) return;
+      const idx = parseInt(el.dataset.tnAtribuirTime);
+      if(torneio.times[idx]) torneio.times[idx].jogadores.push(ui.montagemSelecionado);
+      ui.montagemSelecionado = null;
+      await saveData(); render();
+    });
+    document.querySelectorAll('[data-tn-remover-jogador]').forEach(el=> el.onclick = async ()=>{
+      const g = groupById(ui.groupId); const torneio = g && torneioById(g, ui.torneioId);
+      if(!torneio) return;
+      const pid = el.dataset.tnRemoverJogador;
+      torneio.times.forEach(t=> t.jogadores = t.jogadores.filter(id=>id!==pid));
+      await saveData(); render();
+    });
+    document.querySelectorAll('[data-action="torneio-finalizar-montagem"]').forEach(el=> el.onclick = async ()=>{
+      const g = groupById(ui.groupId); const torneio = g && torneioById(g, el.dataset.tid);
+      if(!g || !torneio) return;
+      if(torneio.times.some(t=>t.jogadores.length===0)){ showToast('Todo time precisa ter pelo menos 1 jogador'); return; }
+      iniciarTorneio(g, torneio);
+      await saveData(); showToast('Times montados e tabela gerada!'); render();
+    });
+    document.querySelectorAll('[data-torneio-sub]').forEach(el=> el.onclick = ()=>{ ui.torneioSub = el.dataset.torneioSub; render(); });
     const abrirMenuGrupoBtn = document.querySelector('[data-action="abrir-menu-grupo"]');
     if(abrirMenuGrupoBtn) abrirMenuGrupoBtn.onclick = ()=>{ ui.menuGrupoAberto=true; render(); };
     document.querySelectorAll('[data-close-menu-grupo]').forEach(el=> el.onclick = (ev)=>{ if(ev.target===el){ ui.menuGrupoAberto=false; render(); } });
@@ -5996,6 +6684,7 @@ function traduzErroAuth(e){
         if(m.timer && m.timer.rodando){ m.timer.acumuladoMs = timerElapsedMs(m); m.timer.rodando=false; m.timer.inicioTs=null; }
         m.status = 'finalizada';
         applyMatchResultStats(m);
+        avancarTorneioAposPartida(m);
         logAtividade(groupById(m.groupId), 'encerrou a pelada');
         ui.matchTab = 'avaliacoes'; ui.mercadoSub = null; ui.pedirSaidaTime = false;
         await saveData(); showToast('Pelada encerrada!'); render();
@@ -6652,6 +7341,7 @@ function traduzErroAuth(e){
       // sem ninguém na fila pra entrar: não tem próximo jogo, encerra a pelada
       m.status = 'finalizada';
       applyMatchResultStats(m);
+      avancarTorneioAposPartida(m);
       logAtividade(groupById(m.groupId), 'finalizou a partida');
       ui.matchTab = 'avaliacoes'; ui.mercadoSub = null;
       await saveData(); showToast('Partida finalizada!'); render();
