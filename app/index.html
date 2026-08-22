@@ -1725,13 +1725,13 @@ function traduzErroAuth(e){
       <h1 class="page-title">Fut</h1>
       <p class="lead">Cada Fut é uma turma fixa de pelada dentro da associação.</p>
       ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:10px;" data-action="marcar-fut-lista">📅 MARCAR FUT</button>` : ''}
-      ${souAdmin ? `<button class="btn btn-ghost btn-block" style="margin-bottom:16px;" data-action="criar-torneio-lista">🏆 Criar torneio</button>` : ''}
+      ${souAdmin ? `<button class="btn btn-gold btn-block" style="margin-bottom:16px;" data-action="criar-torneio-lista">🏆 CRIAR TORNEIO</button>` : ''}
       ${grupos.length===0 ? `<div class="empty"><span class="ball">👥</span>Nenhum Fut criado ainda.</div>` :
         grupos.map(g=>{
           const sou = g.memberIds.includes(me);
           const maxJog = (a && a.jogadoresLinha) ? a.jogadoresLinha*4 : g.maxPlayers;
           const proxima = data.matches.filter(m=>m.groupId===g.id && m.status!=='finalizada' && m.date>=hoje).sort((x,y)=>x.date.localeCompare(y.date))[0];
-          return `
+          const cardGrupo = `
           <div class="card">
             <div class="row" style="align-items:flex-start;">
               <div style="cursor:pointer;flex:1;" ${proxima?`data-open-match="${proxima.id}"`:`data-open-group="${g.id}"`}>
@@ -1740,9 +1740,17 @@ function traduzErroAuth(e){
                 <div class="meta">até ${maxJog} jogadores · até 4 goleiros · ${g.memberIds.length} membros</div>
                 ${proxima ? `<div class="meta" style="color:var(--gold);">📅 Próxima pelada: ${fmtDate(proxima.date)} ${proxima.time}</div>` : ''}
               </div>
-              ${sou ? `<button class="btn btn-ghost btn-sm" data-action="abrir-torneios-fut" data-gid="${g.id}" title="Torneios" style="padding:6px 10px;">🏆</button>` : `<button class="btn btn-gold btn-sm" data-join-group="${g.id}">Entrar</button>`}
+              ${sou ? '' : `<button class="btn btn-gold btn-sm" data-join-group="${g.id}">Entrar</button>`}
             </div>
           </div>`;
+          const cardsTorneios = sou ? torneiosDoFut(g).map(t=>`
+          <div class="card" data-action="abrir-torneio-fut-direto" data-gid="${g.id}" data-tid="${t.id}" style="cursor:pointer;">
+            <div class="row">
+              <div><div style="font-family:'Bebas Neue';font-size:19px;">🏆 ${t.nome}</div>
+                <div class="meta">${t.modalidade} · ${t.numTimes} times · ${STATUS_TORNEIO_LABEL[t.status]||t.status}</div></div>
+            </div>
+          </div>`).join('') : '';
+          return cardGrupo + cardsTorneios;
         }).join('')}
     `;
   }
@@ -1794,16 +1802,8 @@ function traduzErroAuth(e){
     });
     semTimes.forEach(m=> itens.push({ date: m.date, html: cardMatch(m) }));
     itens.sort((a,b)=> a.date.localeCompare(b.date));
-    const torneiosAbertos = torneiosDoFut(g).filter(t=>t.status!=='finalizado');
     return `
       <p class="lead" style="margin-bottom:14px;">💰 A cobrança da associação é mensal (mensalidade dos sócios) — não é cobrada por partida.</p>
-      <div class="card tight" data-action="abrir-torneios-fut" data-gid="${g.id}" style="cursor:pointer;margin-bottom:16px;">
-        <div class="row">
-          <div><div style="font-weight:800;">🏆 Torneios</div>
-            <div class="meta">${torneiosAbertos.length ? torneiosAbertos.length+' em andamento' : (torneiosDoFut(g).length ? 'Ver histórico' : 'Nenhum torneio criado ainda')}</div></div>
-          <div class="meta">›</div>
-        </div>
-      </div>
       <div class="row" style="margin-bottom:6px;align-items:center;">
         <div class="eyebrow" style="margin:0;">Partidas</div>
         ${souAdmin ? `<button class="btn btn-gold btn-sm" data-action="marcar-fut" data-gid="${g.id}">📅 MARCAR FUT</button>` : ''}
@@ -3224,7 +3224,7 @@ function traduzErroAuth(e){
     const d = ui.draftTorneio || (ui.draftTorneio = draftTorneioPadrao(g));
     const minimo = (d.numTimes||0) * ((d.jogadoresLinha||0) + 1);
     return `
-      <button class="btn btn-ghost btn-sm" data-goto="torneios-fut" style="margin-bottom:12px;">← Torneios</button>
+      <button class="btn btn-ghost btn-sm" data-goto="grupos" style="margin-bottom:12px;">← Fut</button>
       <h1 class="page-title">Criar torneio</h1>
 
       <label>Nome do torneio</label>
@@ -3405,7 +3405,7 @@ function traduzErroAuth(e){
 
     return `
       <div class="row" style="align-items:flex-start;">
-        <button class="btn btn-ghost btn-sm" data-goto="torneios-fut" style="margin-bottom:12px;">← Torneios</button>
+        <button class="btn btn-ghost btn-sm" data-goto="grupos" style="margin-bottom:12px;">← Fut</button>
         ${souAdmin ? `<button class="btn btn-ghost btn-sm" data-action="torneio-excluir" data-tid="${torneio.id}" style="padding:6px 12px;">🗑️</button>` : ''}
       </div>
       <h1 class="page-title">🏆 ${torneio.nome}</h1>
@@ -5781,9 +5781,13 @@ function traduzErroAuth(e){
           if(matchIds.size) data.matches = data.matches.filter(m=>!matchIds.has(m.id));
           g.torneios = torneiosDoFut(g).filter(t=>t.id!==torneio.id);
           ui.torneioId = null; ui.torneioSub = null;
-          view = 'torneios-fut';
+          view = 'grupos';
           await saveData(); showToast('Torneio excluído.'); render();
         }, 'Sim, excluir');
+    });
+    document.querySelectorAll('[data-action="abrir-torneio-fut-direto"]').forEach(el=> el.onclick = ()=>{
+      ui.groupId = el.dataset.gid; ui.torneioId = el.dataset.tid; ui.torneioSub=null; ui.montagemSelecionado=null;
+      view='torneio-detalhe'; render();
     });
     const abrirMenuGrupoBtn = document.querySelector('[data-action="abrir-menu-grupo"]');
     if(abrirMenuGrupoBtn) abrirMenuGrupoBtn.onclick = ()=>{ ui.menuGrupoAberto=true; render(); };
