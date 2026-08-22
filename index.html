@@ -12,7 +12,7 @@
   :root{
     --bg:#0f2419; --bg2:#132d1f; --ink:#f4efe1; --ink-dim:#a9baa7;
     --line:rgba(244,239,225,.13); --gold:#e4b94c; --gold-ink:#2b1f06;
-    --bg-glow:#17351f; --cream:#f4efe1;
+    --bg-glow:#17351f; --cream:#f4efe1; --verde:#8fb573; --terra:#c98a52;
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
@@ -71,18 +71,32 @@
   .draft-head{display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:10px;}
   .draft-head h3{font-family:'Bebas Neue',sans-serif; font-size:18px; letter-spacing:.5px; margin:0; font-weight:400;}
   .draft-head .status{font-size:11.5px; color:var(--gold); font-weight:700; text-transform:uppercase; letter-spacing:1px;}
-  .draft-body{display:grid; grid-template-columns:1fr 1fr; gap:0;}
-  @media (max-width:560px){ .draft-body{grid-template-columns:1fr;} }
-  .time-col{padding:18px 20px;}
+  .draft-body{display:grid; grid-template-columns:repeat(4,1fr); gap:0;}
+  @media (max-width:900px){
+    .draft-body{grid-template-columns:repeat(2,1fr);}
+    .time-col:nth-child(odd){border-left:none;}
+    .time-col:nth-child(even){border-left:1px solid var(--line);}
+    .time-col:nth-child(3), .time-col:nth-child(4){border-top:1px solid var(--line);}
+  }
+  @media (max-width:560px){
+    .draft-body{grid-template-columns:1fr;}
+    .time-col{border-left:none !important; border-top:1px solid var(--line);}
+    .time-col:first-child{border-top:none;}
+  }
+  .time-col{padding:16px 14px;}
   .time-col + .time-col{border-left:1px solid var(--line);}
-  @media (max-width:560px){ .time-col + .time-col{border-left:none; border-top:1px solid var(--line);} }
-  .time-col h4{font-size:11px; text-transform:uppercase; letter-spacing:1.5px; margin:0 0 12px; font-weight:800; display:flex; align-items:center; gap:8px;}
+  .time-col h4{font-size:10px; text-transform:uppercase; letter-spacing:1px; margin:0 0 10px; font-weight:800; display:flex; align-items:center; gap:7px;}
   .time-col.ouro h4{color:var(--gold);}
   .time-col.creme h4{color:var(--cream);}
-  .swatch{width:9px; height:9px; border-radius:2px;}
+  .time-col.verde h4{color:var(--verde);}
+  .time-col.terra h4{color:var(--terra);}
+  .swatch{width:9px; height:9px; border-radius:2px; flex:none;}
   .time-col.ouro .swatch{background:var(--gold);}
   .time-col.creme .swatch{background:var(--cream);}
-  .jogador-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px dashed var(--line); font-size:13.5px; opacity:0; transform:translateY(6px); transition:opacity .35s ease, transform .35s ease;}
+  .time-col.verde .swatch{background:var(--verde);}
+  .time-col.terra .swatch{background:var(--terra);}
+  .jogador-row.gol .pos{color:var(--gold); background:rgba(228,185,76,.14);}
+  .jogador-row{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed var(--line); font-size:12.5px; opacity:0; transform:translateY(6px); transition:opacity .35s ease, transform .35s ease;}
   .jogador-row.mostrar{opacity:1; transform:translateY(0);}
   .jogador-row:last-child{border-bottom:none;}
   .jogador-row .pos{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ink-dim); background:rgba(244,239,225,.06); border-radius:5px; padding:2px 6px; flex:none;}
@@ -181,7 +195,7 @@
       <div class="draft" id="draft">
         <div class="draft-head">
           <h3>🔄 Sorteio de times</h3>
-          <div class="status" id="draft-status">9 confirmados</div>
+          <div class="status" id="draft-status">32 confirmados</div>
         </div>
         <div class="draft-body">
           <div class="time-col ouro">
@@ -192,9 +206,17 @@
             <h4><span class="swatch"></span>Time Creme</h4>
             <div id="col-creme"></div>
           </div>
+          <div class="time-col verde">
+            <h4><span class="swatch"></span>Time Verde</h4>
+            <div id="col-verde"></div>
+          </div>
+          <div class="time-col terra">
+            <h4><span class="swatch"></span>Time Terra</h4>
+            <div id="col-terra"></div>
+          </div>
         </div>
         <div class="draft-foot">
-          <span class="draft-note">Times equilibrados por posição e nota — não por quem o capitão lembra.</span>
+          <span class="draft-note">Padrão Society: 4 times, 1 goleiro + 7 de linha em cada — igual no app.</span>
           <button class="btn-sortear" id="btn-sortear">🔀 Sortear de novo</button>
         </div>
       </div>
@@ -374,33 +396,41 @@
 
 <script>
 (function(){
-  var NOMES = ['Lucas','Gabriel','Rafael','Bruno','João','Pedro','Matheus','Diego','Vinícius','Thiago','Igor','André'];
-  var POS = ['GOL','ZAG','LAT','VOL','MEI','ATA'];
+  // Padrão Society do app: 4 times, cada um com 1 goleiro + 7 de linha (Fixo/Ala/Meia/Pivô).
+  var NOMES = ['Lucas','Gabriel','Rafael','Bruno','João','Pedro','Matheus','Diego','Vinícius','Thiago','Igor','André',
+    'Felipe','Rodrigo','Marcos','Daniel','Gustavo','Leonardo','Fernando','Ricardo','Eduardo','Carlos','Paulo','Marcelo',
+    'Alexandre','Renato','Fábio','Vitor','Caio','Henrique','Guilherme','Murilo'];
+  var POS_LINHA = ['FIX','ALA','MEI','PIV'];
+  var TIMES = ['ouro','creme','verde','terra'];
   function embaralhar(arr){
     var a = arr.slice();
     for(var i=a.length-1;i>0;i--){ var j = Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
     return a;
   }
   function sortear(){
-    var qtd = 8 + Math.floor(Math.random()*3); // 8 a 10
-    var nomes = embaralhar(NOMES).slice(0, qtd);
-    var meio = Math.ceil(nomes.length/2);
-    var ouro = nomes.slice(0, meio);
-    var creme = nomes.slice(meio);
+    var nomes = embaralhar(NOMES); // 32 nomes: 4 times x (1 goleiro + 7 de linha)
     document.getElementById('draft-status').textContent = nomes.length + ' confirmados';
-    preencher('col-ouro', ouro);
-    preencher('col-creme', creme);
+    TIMES.forEach(function(time, i){
+      var elenco = nomes.slice(i*8, i*8+8);
+      preencherTime('col-'+time, elenco[0], elenco.slice(1));
+    });
   }
-  function preencher(id, lista){
+  function preencherTime(id, goleiro, linha){
     var col = document.getElementById(id);
     col.innerHTML = '';
-    lista.forEach(function(nome, i){
+    var linhaDelay = 0;
+    var golRow = document.createElement('div');
+    golRow.className = 'jogador-row gol';
+    golRow.innerHTML = '<span class="pos">GOL</span><span>'+goleiro+'</span>';
+    col.appendChild(golRow);
+    setTimeout(function(){ golRow.classList.add('mostrar'); }, 60*linhaDelay);
+    linha.forEach(function(nome, i){
       var row = document.createElement('div');
       row.className = 'jogador-row';
-      var pos = POS[Math.floor(Math.random()*POS.length)];
+      var pos = POS_LINHA[i % POS_LINHA.length];
       row.innerHTML = '<span class="pos">'+pos+'</span><span>'+nome+'</span>';
       col.appendChild(row);
-      setTimeout(function(){ row.classList.add('mostrar'); }, 60*i);
+      setTimeout(function(){ row.classList.add('mostrar'); }, 60*(i+1));
     });
   }
   document.getElementById('btn-sortear').addEventListener('click', sortear);
